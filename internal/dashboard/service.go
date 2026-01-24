@@ -107,3 +107,33 @@ func (s *Service) HandleCategorySpending(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, spending)
 }
+
+// HandleNetWorthOverTime returns net worth for each month
+func (s *Service) HandleNetWorthOverTime(c *gin.Context) {
+	data, err := s.parser.GetNetWorthOverTime()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+// HandleCategoryTrends returns spending trends for each category
+func (s *Service) HandleCategoryTrends(c *gin.Context) {
+	data, err := s.parser.GetCategoryTrends()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+// HandleYearOverYearComparison returns spending comparison across years
+func (s *Service) HandleYearOverYearComparison(c *gin.Context) {
+	data, err := s.parser.GetYearOverYearComparison()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
