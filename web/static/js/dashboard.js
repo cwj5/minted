@@ -44,6 +44,67 @@ async function loadAccounts() {
     }
 }
 
+// Load budget data
+async function loadBudgetData() {
+    try {
+        const response = await fetch('/api/budget');
+        const budgetItems = await response.json();
+
+        const container = document.getElementById('budget');
+        if (!budgetItems || budgetItems.length === 0) {
+            container.innerHTML = '<p>No budget data available (need at least 2 months of history)</p>';
+            return;
+        }
+
+        container.innerHTML = budgetItems.map(item => {
+            // Determine color class based on percent budget
+            let statusClass = 'on-budget';
+            if (item.percentBudget > 100) {
+                statusClass = 'over-budget';
+            } else if (item.percentBudget > 80) {
+                statusClass = 'near-budget';
+            }
+
+            // Determine status text
+            let statusText = 'On track';
+            if (item.percentBudget > 100) {
+                statusText = `Over by ${formatCurrency(item.variance)}`;
+            } else if (item.variance > 0) {
+                statusText = `Over by ${formatCurrency(item.variance)}`;
+            } else {
+                statusText = `Under by ${formatCurrency(-item.variance)}`;
+            }
+
+            return `
+            <div class="budget-item ${statusClass}">
+                <div class="budget-header">
+                    <div class="budget-category">${escapeHtml(item.category)}</div>
+                    <div class="budget-status">${statusText}</div>
+                </div>
+                <div class="budget-amounts">
+                    <div class="budget-row">
+                        <span class="label">Average:</span>
+                        <span class="amount">${formatCurrency(item.average)}</span>
+                    </div>
+                    <div class="budget-row">
+                        <span class="label">This Month:</span>
+                        <span class="amount">${formatCurrency(item.currentMonth)}</span>
+                    </div>
+                </div>
+                <div class="budget-progress-container">
+                    <div class="budget-progress-bar">
+                        <div class="budget-progress-fill" style="width: ${Math.min(item.percentBudget, 100)}%"></div>
+                    </div>
+                    <div class="budget-percent">${item.percentBudget.toFixed(0)}%</div>
+                </div>
+            </div>
+        `}).join('');
+    } catch (error) {
+        console.error('Error loading budget data:', error);
+        document.getElementById('budget').innerHTML = '<p>Error loading budget data</p>';
+    }
+}
+
 // Load transactions
 async function loadTransactions() {
     try {
@@ -105,6 +166,7 @@ function escapeHtml(text) {
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
     loadSummary();
+    loadBudgetData();
     loadAccounts();
     loadTransactions();
 });

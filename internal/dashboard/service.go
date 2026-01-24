@@ -56,3 +56,13 @@ func (s *Service) HandleSummary(c *gin.Context) {
 		"netWorth":         0,
 	})
 }
+
+// HandleBudgetComparison returns budget data with historical averages
+func (s *Service) HandleBudgetComparison(c *gin.Context) {
+	budgetItems, err := s.parser.GetBudgetData()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, budgetItems)
+}
