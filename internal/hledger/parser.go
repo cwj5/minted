@@ -45,10 +45,10 @@ type Quantity struct {
 
 // BudgetItem represents budget information for a spending category
 type BudgetItem struct {
-	Category     string  `json:"category"`
-	Average      float64 `json:"average"`
-	CurrentMonth float64 `json:"currentMonth"`
-	Variance     float64 `json:"variance"`
+	Category      string  `json:"category"`
+	Average       float64 `json:"average"`
+	CurrentMonth  float64 `json:"currentMonth"`
+	Variance      float64 `json:"variance"`
 	PercentBudget float64 `json:"percentBudget"`
 }
 
@@ -229,7 +229,7 @@ func (p *Parser) GetMonthlySpending() (map[string]map[string]float64, error) {
 
 	for _, tx := range transactions {
 		month := getYearMonth(tx.Date)
-		
+
 		for _, posting := range tx.Postings {
 			// Only include Expenses accounts
 			if !strings.HasPrefix(posting.Account, "Expenses:") {

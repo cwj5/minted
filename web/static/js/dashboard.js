@@ -44,6 +44,13 @@ async function loadAccounts() {
     }
 }
 
+// Get day of month percentage (how much of the month is complete)
+function getDayOfMonthPercent() {
+    const now = new Date();
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return (now.getDate() / lastDay) * 100;
+}
+
 // Load budget data
 async function loadBudgetData() {
     try {
@@ -55,6 +62,8 @@ async function loadBudgetData() {
             container.innerHTML = '<p>No budget data available (need at least 2 months of history)</p>';
             return;
         }
+
+        const dayPercent = getDayOfMonthPercent();
 
         container.innerHTML = budgetItems.map(item => {
             // Determine color class based on percent budget
@@ -93,6 +102,7 @@ async function loadBudgetData() {
                 </div>
                 <div class="budget-progress-container">
                     <div class="budget-progress-bar">
+                        <div class="budget-pace-line" style="left: ${dayPercent}%"></div>
                         <div class="budget-progress-fill" style="width: ${Math.min(item.percentBudget, 100)}%"></div>
                     </div>
                     <div class="budget-percent">${item.percentBudget.toFixed(0)}%</div>

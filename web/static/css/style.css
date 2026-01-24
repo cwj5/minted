@@ -300,7 +300,18 @@ body {
     height: 6px;
     background: rgba(0, 0, 0, 0.1);
     border-radius: 3px;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
+}
+
+.budget-pace-line {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px dashed rgba(0, 0, 0, 0.3);
+    margin-left: -1px;
 }
 
 .budget-progress-fill {
