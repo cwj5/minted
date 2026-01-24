@@ -185,6 +185,12 @@ body {
 }
 
 .transactions-table .account-col {
+    color: var(--secondary-color);
+    font-weight: 500;
+    width: 110px;
+}
+
+.transactions-table .category-col {
     color: var(--text-light);
     font-size: 0.9rem;
 }

@@ -115,6 +115,18 @@ async function loadBudgetData() {
     }
 }
 
+// Extract category from account name
+function getCategory(accountName) {
+    const parts = accountName.split(':');
+    return parts[0]; // e.g., "Assets", "Expenses", "Liabilities", "Income"
+}
+
+// Extract account from account name
+function getAccount(accountName) {
+    const parts = accountName.split(':');
+    return parts.slice(1).join(':'); // e.g., "Checking" or "Food:Groceries"
+}
+
 // Load transactions
 async function loadTransactions() {
     try {
@@ -133,7 +145,8 @@ async function loadTransactions() {
                     <tr>
                         <th>Date</th>
                         <th>Description</th>
-                        <th>Accounts</th>
+                        <th>Account</th>
+                        <th>Category</th>
                         <th class="amount-col">Amount</th>
                     </tr>
                 </thead>
@@ -148,13 +161,34 @@ async function loadTransactions() {
                 amount = quantity.decimalMantissa / Math.pow(10, quantity.decimalPlaces);
             }
 
-            const accountsList = tx.tpostings.map(p => escapeHtml(p.paccount)).join(', ');
+            // Find the asset/liability account and the income/expense category
+            let account = '';
+            let category = '';
+
+            if (tx.tpostings) {
+                // Find first Assets or Liabilities posting
+                const assetLiability = tx.tpostings.find(p => 
+                    p.paccount.startsWith('Assets:') || p.paccount.startsWith('Liabilities:')
+                );
+                if (assetLiability) {
+                    account = getAccount(assetLiability.paccount);
+                }
+
+                // Find first Expenses or Income posting
+                const expenseIncome = tx.tpostings.find(p => 
+                    p.paccount.startsWith('Expenses:') || p.paccount.startsWith('Income:')
+                );
+                if (expenseIncome) {
+                    category = getAccount(expenseIncome.paccount);
+                }
+            }
 
             return `
                     <tr>
                         <td class="date-col">${formatDate(tx.tdate)}</td>
                         <td class="desc-col">${escapeHtml(tx.tdescription)}</td>
-                        <td class="account-col">${accountsList}</td>
+                        <td class="account-col">${escapeHtml(account)}</td>
+                        <td class="category-col">${escapeHtml(category)}</td>
                         <td class="amount-col">${formatCurrency(amount)}</td>
                     </tr>
             `;
