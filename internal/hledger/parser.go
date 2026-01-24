@@ -54,7 +54,7 @@ func NewParser(journalFile string) *Parser {
 
 // GetAccounts retrieves Assets and Liabilities accounts from hledger with their balances
 func (p *Parser) GetAccounts() ([]Account, error) {
-	cmd := exec.Command("hledger", "-f", p.journalFile, "balance", "-O", "json")
+	cmd := exec.Command("hledger", "-f", p.journalFile, "balance", "--empty", "-O", "json")
 	output, err := cmd.Output()
 	if err != nil {
 		log.Printf("Error running hledger balance: file=%s, error=%v", p.journalFile, err)
