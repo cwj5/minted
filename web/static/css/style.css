@@ -346,6 +346,45 @@ body {
     text-align: right;
 }
 
+/* Analytics Section */
+.analytics-section {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.analytics-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+    color: var(--primary-color);
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 30px;
+    margin-bottom: 20px;
+}
+
+.chart-container {
+    background: var(--light-bg);
+    padding: 20px;
+    border-radius: 8px;
+    position: relative;
+}
+
+.chart-container h3 {
+    font-size: 1.1rem;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.chart-container canvas {
+    max-height: 300px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .header h1 {
@@ -369,7 +408,13 @@ body {
     }
 
     .accounts-section,
-    .transactions-section {
+    .transactions-section,
+    .budget-section,
+    .analytics-section {
         padding: 20px;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr;
     }
 }

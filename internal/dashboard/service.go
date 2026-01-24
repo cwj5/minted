@@ -87,3 +87,23 @@ func (s *Service) HandleBudgetComparison(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, budgetItems)
 }
+
+// HandleMonthlyMetrics returns monthly income, expenses, and savings
+func (s *Service) HandleMonthlyMetrics(c *gin.Context) {
+	metrics, err := s.parser.GetMonthlyMetrics()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, metrics)
+}
+
+// HandleCategorySpending returns spending by category over time
+func (s *Service) HandleCategorySpending(c *gin.Context) {
+	spending, err := s.parser.GetCategorySpending()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, spending)
+}

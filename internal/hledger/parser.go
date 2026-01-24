@@ -52,6 +52,22 @@ type BudgetItem struct {
 	PercentBudget float64 `json:"percentBudget"`
 }
 
+// MonthlyMetrics represents financial metrics for a month
+type MonthlyMetrics struct {
+	Month        string  `json:"month"`
+	Income       float64 `json:"income"`
+	Expenses     float64 `json:"expenses"`
+	NetWorth     float64 `json:"netWorth"`
+	SavingsRate  float64 `json:"savingsRate"`
+}
+
+// CategorySpending represents spending for a category in a month
+type CategorySpending struct {
+	Month    string             `json:"month"`
+	Category string             `json:"category"`
+	Amount   float64            `json:"amount"`
+}
+
 // Parser handles hledger journal parsing
 type Parser struct {
 	journalFile string
@@ -377,4 +393,142 @@ func (p *Parser) GetBudgetData() ([]BudgetItem, error) {
 	})
 
 	return budgetItems, nil
+}
+
+// GetMonthlyMetrics returns income, expenses, and net worth for each month
+func (p *Parser) GetMonthlyMetrics() ([]MonthlyMetrics, error) {
+	transactions, err := p.GetTransactions(0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> {income, expenses}
+	monthlyData := make(map[string]struct {
+		income   float64
+		expenses float64
+	})
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Positive amounts for income (convert negative to positive), negative for expenses
+			if strings.HasPrefix(posting.Account, "Income:") {
+				data := monthlyData[month]
+				data.income += -amount // Income is negative in hledger, so negate it
+				monthlyData[month] = data
+			} else if strings.HasPrefix(posting.Account, "Expenses:") {
+				data := monthlyData[month]
+				data.expenses += amount
+				monthlyData[month] = data
+			}
+		}
+	}
+
+	// Get all unique months and sort them
+	var months []string
+	for m := range monthlyData {
+		months = append(months, m)
+	}
+	sort.Strings(months)
+
+	// Build metrics
+	var metrics []MonthlyMetrics
+	for _, month := range months {
+		data := monthlyData[month]
+
+		// Get net worth for this month
+		netWorth := 0.0
+		// This is a simplified version - for complete accuracy we'd need to calculate
+		// balance at each point in time, which is more complex
+
+		// Calculate savings rate
+		savingsRate := 0.0
+		if data.income > 0 {
+			savingsRate = ((data.income - data.expenses) / data.income) * 100
+		}
+
+		metrics = append(metrics, MonthlyMetrics{
+			Month:       month,
+			Income:      math.Round(data.income*100) / 100,
+			Expenses:    math.Round(data.expenses*100) / 100,
+			NetWorth:    netWorth,
+			SavingsRate: math.Round(savingsRate*100) / 100,
+		})
+	}
+
+	return metrics, nil
+}
+
+// GetCategorySpending returns spending by category for each month
+func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
+	transactions, err := p.GetTransactions(0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> category -> amount
+	monthlyCategories := make(map[string]map[string]float64)
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			// Only include Expenses accounts
+			if !strings.HasPrefix(posting.Account, "Expenses:") {
+				continue
+			}
+
+			// Extract category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Store positive value for expenses
+			if amount < 0 {
+				amount = -amount
+			}
+
+			if monthlyCategories[month] == nil {
+				monthlyCategories[month] = make(map[string]float64)
+			}
+			monthlyCategories[month][category] += amount
+		}
+	}
+
+	// Build result
+	var result []CategorySpending
+	for month, categories := range monthlyCategories {
+		for category, amount := range categories {
+			result = append(result, CategorySpending{
+				Month:    month,
+				Category: category,
+				Amount:   math.Round(amount*100) / 100,
+			})
+		}
+	}
+
+	// Sort by month and category
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Month != result[j].Month {
+			return result[i].Month < result[j].Month
+		}
+		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
 }

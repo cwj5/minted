@@ -167,7 +167,7 @@ async function loadTransactions() {
 
             if (tx.tpostings) {
                 // Find first Assets or Liabilities posting
-                const assetLiability = tx.tpostings.find(p => 
+                const assetLiability = tx.tpostings.find(p =>
                     p.paccount.startsWith('Assets:') || p.paccount.startsWith('Liabilities:')
                 );
                 if (assetLiability) {
@@ -175,7 +175,7 @@ async function loadTransactions() {
                 }
 
                 // Find first Expenses or Income posting
-                const expenseIncome = tx.tpostings.find(p => 
+                const expenseIncome = tx.tpostings.find(p =>
                     p.paccount.startsWith('Expenses:') || p.paccount.startsWith('Income:')
                 );
                 if (expenseIncome) {
@@ -224,10 +224,139 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Load and render income vs expenses chart
+async function loadIncomeExpensesChart() {
+    try {
+        const response = await fetch('/api/monthly-metrics');
+        const metrics = await response.json();
+
+        if (!metrics || metrics.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('incomeExpensesChart');
+        if (!ctx) return;
+
+        const labels = metrics.map(m => m.month);
+        const incomeData = metrics.map(m => m.income);
+        const expensesData = metrics.map(m => m.expenses);
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: incomeData,
+                        backgroundColor: '#27ae60',
+                        borderColor: '#229954',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Expenses',
+                        data: expensesData,
+                        backgroundColor: '#e74c3c',
+                        borderColor: '#c0392b',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading income/expenses chart:', error);
+    }
+}
+
+// Load and render spending by category chart
+async function loadCategorySpendingChart() {
+    try {
+        const response = await fetch('/api/category-spending');
+        const spending = await response.json();
+
+        if (!spending || spending.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('categorySpendingChart');
+        if (!ctx) return;
+
+        // Group by category and sum all months
+        const categoryTotals = {};
+        spending.forEach(item => {
+            if (!categoryTotals[item.category]) {
+                categoryTotals[item.category] = 0;
+            }
+            categoryTotals[item.category] += item.amount;
+        });
+
+        const labels = Object.keys(categoryTotals).sort();
+        const data = labels.map(cat => categoryTotals[cat]);
+
+        // Color palette
+        const colors = [
+            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#16a085'
+        ];
+
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return '$' + context.parsed.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading category spending chart:', error);
+    }
+}
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
     loadSummary();
     loadBudgetData();
     loadAccounts();
     loadTransactions();
+    loadIncomeExpensesChart();
+    loadCategorySpendingChart();
 });
