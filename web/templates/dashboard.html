@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .title }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>💰 Minted</h1>
+            <p>hledger Dashboard</p>
+        </header>
+
+        <main class="dashboard">
+            <!-- Summary Cards -->
+            <section class="summary-cards">
+                <div class="card">
+                    <h3>Net Worth</h3>
+                    <p class="amount" id="netWorth">$0.00</p>
+                </div>
+                <div class="card">
+                    <h3>Total Assets</h3>
+                    <p class="amount" id="totalAssets">$0.00</p>
+                </div>
+                <div class="card">
+                    <h3>Total Liabilities</h3>
+                    <p class="amount negative" id="totalLiabilities">$0.00</p>
+                </div>
+            </section>
+
+            <!-- Accounts Section -->
+            <section class="accounts-section">
+                <h2>Accounts</h2>
+                <div id="accounts" class="accounts-list">
+                    <p>Loading accounts...</p>
+                </div>
+            </section>
+
+            <!-- Recent Transactions -->
+            <section class="transactions-section">
+                <h2>Recent Transactions</h2>
+                <div id="transactions" class="transactions-list">
+                    <p>Loading transactions...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
