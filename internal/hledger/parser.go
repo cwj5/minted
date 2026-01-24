@@ -108,6 +108,11 @@ func NewParser(journalFile string, settings *config.Settings) *Parser {
 	}
 }
 
+// UpdateSettings updates the parser's settings (used when settings change at runtime)
+func (p *Parser) UpdateSettings(settings *config.Settings) {
+	p.settings = settings
+}
+
 // GetAccounts retrieves Assets and Liabilities accounts from hledger with their balances
 func (p *Parser) GetAccounts() ([]Account, error) {
 	cmd := exec.Command("hledger", "-f", p.journalFile, "balance", "--empty", "-O", "json")

@@ -160,8 +160,11 @@ func (s *Service) HandleUpdateSettings(c *gin.Context) {
 		return
 	}
 
-	// Update the settings
+	// Update the settings in memory
 	s.settings = &updatedSettings
+
+	// Update the parser's settings so it uses the new tiers
+	s.parser.UpdateSettings(&updatedSettings)
 
 	// Save to disk
 	if err := config.SaveSettings(&updatedSettings); err != nil {
