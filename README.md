@@ -149,7 +149,7 @@ The dashboard uses hledger's JSON output to fetch financial data:
 
 **To add a new expense category section:**
 1. Add new method `GetExpenses()` in `internal/hledger/parser.go`
-   - Filter accounts with `strings.HasPrefix(name, "Expenses:")`
+   - Filter accounts with `strings.HasPrefix(name, "expenses:")`
    - Use similar JSON parsing as `GetAccounts()`
    
 2. Add new endpoint in `internal/dashboard/service.go`

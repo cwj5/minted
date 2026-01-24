@@ -281,7 +281,7 @@
         <div class="settings-section">
             <h2>Spending Tiers</h2>
             <p>Define spending categories and group them into tiers for better visualization.</p>
-            
+
             <button class="btn-primary" onclick="openNewTierModal()">+ Add New Tier</button>
 
             <ul class="tier-list" id="tiersList">
@@ -329,7 +329,7 @@
                 <button class="close-btn" onclick="closeTierModal()">×</button>
             </div>
             <div id="tierModalError" class="error-message" style="display: none;"></div>
-            
+
             <div class="form-group">
                 <label for="tierNameInput">Tier Name</label>
                 <input type="text" id="tierNameInput" placeholder="e.g., Essential, Discretionary">
@@ -365,7 +365,7 @@
                 const response = await fetch('/api/settings');
                 if (!response.ok) throw new Error('Failed to load settings');
                 currentSettings = await response.json();
-                
+
                 renderTiers();
                 updateThemeUI();
                 updatePreferencesUI();
@@ -416,7 +416,7 @@
             document.getElementById('tierModalTitle').textContent = `Edit Tier: ${tier.name}`;
             document.getElementById('tierNameInput').value = tier.name;
             document.getElementById('tierColorInput').value = tier.color;
-            
+
             const categoriesInput = document.getElementById('tierCategoriesInput');
             categoriesInput.innerHTML = tier.categories.map((cat, i) => `
                 <div class="category-input-group">
@@ -424,7 +424,7 @@
                     <button class="btn-danger btn-small" onclick="this.parentElement.remove()">Remove</button>
                 </div>
             `).join('');
-            
+
             document.getElementById('tierModal').classList.add('active');
         }
 

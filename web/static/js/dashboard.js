@@ -168,7 +168,7 @@ async function loadTransactions() {
             if (tx.tpostings) {
                 // Find first Assets or Liabilities posting
                 const assetLiability = tx.tpostings.find(p =>
-                    p.paccount.startsWith('Assets:') || p.paccount.startsWith('Liabilities:')
+                    p.paccount.startsWith('assets:') || p.paccount.startsWith('liabilities:')
                 );
                 if (assetLiability) {
                     account = getAccount(assetLiability.paccount);
@@ -176,7 +176,7 @@ async function loadTransactions() {
 
                 // Find first Expenses or Income posting
                 const expenseIncome = tx.tpostings.find(p =>
-                    p.paccount.startsWith('Expenses:') || p.paccount.startsWith('Income:')
+                    p.paccount.startsWith('expenses:') || p.paccount.startsWith('income:')
                 );
                 if (expenseIncome) {
                     category = getAccount(expenseIncome.paccount);
