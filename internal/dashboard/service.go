@@ -3,19 +3,22 @@ package dashboard
 import (
 	"net/http"
 
+	"github.com/cwj5/minted/internal/config"
 	"github.com/cwj5/minted/internal/hledger"
 	"github.com/gin-gonic/gin"
 )
 
 // Service handles dashboard operations
 type Service struct {
-	parser *hledger.Parser
+	parser   *hledger.Parser
+	settings *config.Settings
 }
 
 // NewService creates a new dashboard service
-func NewService(journalFile string) *Service {
+func NewService(journalFile string, settings *config.Settings) *Service {
 	return &Service{
-		parser: hledger.NewParser(journalFile),
+		parser:   hledger.NewParser(journalFile),
+		settings: settings,
 	}
 }
 
@@ -38,8 +41,7 @@ func (s *Service) HandleAccounts(c *gin.Context) {
 
 // HandleTransactions returns transaction data as JSON
 func (s *Service) HandleTransactions(c *gin.Context) {
-	limit := 50
-	transactions, err := s.parser.GetTransactions(limit)
+	transactions, err := s.parser.GetTransactions()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -60,9 +62,9 @@ func (s *Service) HandleSummary(c *gin.Context) {
 
 	// Sum up assets and liabilities
 	for _, account := range accounts {
-		if account.Name[:7] == "Assets:" {
+		if account.Name[:7] == "assets:" {
 			totalAssets += account.Balance
-		} else if account.Name[:12] == "Liabilities:" {
+		} else if account.Name[:12] == "liabilities:" {
 			// Liabilities in hledger are negative, convert to positive for display
 			totalLiabilities += -account.Balance
 		}
@@ -136,4 +138,29 @@ func (s *Service) HandleYearOverYearComparison(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, data)
+}
+
+// HandleGetSettings returns the current application settings
+func (s *Service) HandleGetSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, s.settings)
+}
+
+// HandleUpdateSettings updates application settings and saves to disk
+func (s *Service) HandleUpdateSettings(c *gin.Context) {
+	var updatedSettings config.Settings
+	if err := c.BindJSON(&updatedSettings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid settings format"})
+		return
+	}
+
+	// Update the settings
+	s.settings = &updatedSettings
+
+	// Save to disk
+	if err := config.SaveSettings(&updatedSettings); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "settings updated successfully"})
 }
