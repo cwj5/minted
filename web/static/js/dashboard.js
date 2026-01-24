@@ -240,6 +240,7 @@ async function loadIncomeExpensesChart() {
         const labels = metrics.map(m => m.month);
         const incomeData = metrics.map(m => m.income);
         const expensesData = metrics.map(m => m.expenses);
+        const savingsData = metrics.map(m => m.income - m.expenses);
 
         new Chart(ctx, {
             type: 'bar',
@@ -247,24 +248,48 @@ async function loadIncomeExpensesChart() {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Income',
-                        data: incomeData,
+                        type: 'bar',
+                        label: 'Savings',
+                        data: savingsData,
                         backgroundColor: '#27ae60',
                         borderColor: '#229954',
-                        borderWidth: 1
+                        borderWidth: 1,
+                        yAxisID: 'y',
+                        order: 3
                     },
                     {
+                        type: 'line',
+                        label: 'Income',
+                        data: incomeData,
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        order: 1
+                    },
+                    {
+                        type: 'line',
                         label: 'Expenses',
                         data: expensesData,
-                        backgroundColor: '#e74c3c',
-                        borderColor: '#c0392b',
-                        borderWidth: 1
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        order: 2
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
                 plugins: {
                     legend: {
                         position: 'top',
@@ -274,7 +299,7 @@ async function loadIncomeExpensesChart() {
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            callback: function(value) {
+                            callback: function (value) {
                                 return '$' + value.toLocaleString();
                             }
                         }
@@ -338,7 +363,7 @@ async function loadCategorySpendingChart() {
                     },
                     tooltip: {
                         callbacks: {
-                            label: function(context) {
+                            label: function (context) {
                                 return '$' + context.parsed.toFixed(2);
                             }
                         }

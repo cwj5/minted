@@ -54,18 +54,18 @@ type BudgetItem struct {
 
 // MonthlyMetrics represents financial metrics for a month
 type MonthlyMetrics struct {
-	Month        string  `json:"month"`
-	Income       float64 `json:"income"`
-	Expenses     float64 `json:"expenses"`
-	NetWorth     float64 `json:"netWorth"`
-	SavingsRate  float64 `json:"savingsRate"`
+	Month       string  `json:"month"`
+	Income      float64 `json:"income"`
+	Expenses    float64 `json:"expenses"`
+	NetWorth    float64 `json:"netWorth"`
+	SavingsRate float64 `json:"savingsRate"`
 }
 
 // CategorySpending represents spending for a category in a month
 type CategorySpending struct {
-	Month    string             `json:"month"`
-	Category string             `json:"category"`
-	Amount   float64            `json:"amount"`
+	Month    string  `json:"month"`
+	Category string  `json:"category"`
+	Amount   float64 `json:"amount"`
 }
 
 // Parser handles hledger journal parsing
