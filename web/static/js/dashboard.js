@@ -127,7 +127,20 @@ async function loadTransactions() {
             return;
         }
 
-        container.innerHTML = transactions.map(tx => {
+        let html = `
+            <table class="transactions-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Accounts</th>
+                        <th class="amount-col">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        html += transactions.map(tx => {
             // Extract amount from the first posting
             let amount = 0;
             if (tx.tpostings && tx.tpostings.length > 0 && tx.tpostings[0].pamount && tx.tpostings[0].pamount.length > 0) {
@@ -135,20 +148,24 @@ async function loadTransactions() {
                 amount = quantity.decimalMantissa / Math.pow(10, quantity.decimalPlaces);
             }
 
+            const accountsList = tx.tpostings.map(p => escapeHtml(p.paccount)).join(', ');
+
             return `
-            <div class="transaction-item">
-                <div class="transaction-left">
-                    <div class="transaction-date">${formatDate(tx.tdate)}</div>
-                    <div class="transaction-description">${escapeHtml(tx.tdescription)}</div>
-                    <div class="transaction-account">
-                        ${tx.tpostings.map(p => escapeHtml(p.paccount)).join(', ')}
-                    </div>
-                </div>
-                <div class="transaction-amount">
-                    ${formatCurrency(amount)}
-                </div>
-            </div>
-        `}).join('');
+                    <tr>
+                        <td class="date-col">${formatDate(tx.tdate)}</td>
+                        <td class="desc-col">${escapeHtml(tx.tdescription)}</td>
+                        <td class="account-col">${accountsList}</td>
+                        <td class="amount-col">${formatCurrency(amount)}</td>
+                    </tr>
+            `;
+        }).join('');
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = html;
     } catch (error) {
         console.error('Error loading transactions:', error);
         document.getElementById('transactions').innerHTML = '<p>Error loading transactions</p>';

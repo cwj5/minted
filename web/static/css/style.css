@@ -143,58 +143,57 @@ body {
 
 /* Transactions List */
 .transactions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+    overflow-x: auto;
 }
 
-.transaction-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px;
+.transactions-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.transactions-table thead {
     background: var(--light-bg);
-    border-radius: 4px;
-    transition: background 0.3s ease;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.1);
 }
 
-.transaction-item:hover {
-    background: #d5dbdb;
-}
-
-.transaction-left {
-    flex: 1;
-}
-
-.transaction-date {
-    font-size: 0.85rem;
-    color: var(--text-light);
-}
-
-.transaction-description {
+.transactions-table th {
+    padding: 12px;
+    text-align: left;
     font-weight: 600;
     color: var(--primary-color);
-    margin: 5px 0;
 }
 
-.transaction-account {
-    font-size: 0.9rem;
+.transactions-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.transactions-table tbody tr:hover {
+    background: var(--light-bg);
+}
+
+.transactions-table .date-col {
+    width: 100px;
     color: var(--text-light);
+    font-size: 0.9rem;
 }
 
-.transaction-amount {
-    font-size: 1.2rem;
-    font-weight: bold;
-    min-width: 100px;
+.transactions-table .desc-col {
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+.transactions-table .account-col {
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.transactions-table .amount-col {
     text-align: right;
-}
-
-.transaction-amount.positive {
-    color: var(--success-color);
-}
-
-.transaction-amount.negative {
-    color: var(--danger-color);
+    font-weight: 600;
+    width: 120px;
+    color: var(--secondary-color);
 }
 
 /* Budget Section */
