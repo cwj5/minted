@@ -11,7 +11,7 @@ async function loadSummary() {
     try {
         const response = await fetch('/api/summary');
         const data = await response.json();
-        
+
         document.getElementById('netWorth').textContent = formatCurrency(data.netWorth || 0);
         document.getElementById('totalAssets').textContent = formatCurrency(data.totalAssets || 0);
         document.getElementById('totalLiabilities').textContent = formatCurrency(data.totalLiabilities || 0);
@@ -25,17 +25,17 @@ async function loadAccounts() {
     try {
         const response = await fetch('/api/accounts');
         const accounts = await response.json();
-        
+
         const container = document.getElementById('accounts');
         if (!accounts || accounts.length === 0) {
             container.innerHTML = '<p>No accounts found</p>';
             return;
         }
-        
+
         container.innerHTML = accounts.map(account => `
             <div class="account-item">
-                <div class="account-name">${escapeHtml(account.name)}</div>
-                <div class="account-balance">${formatCurrency(account.balance || 0)}</div>
+                <div class="account-name">${escapeHtml(account.aname)}</div>
+                <div class="account-balance">${formatCurrency(account.aebalance || 0)}</div>
             </div>
         `).join('');
     } catch (error) {
@@ -49,27 +49,35 @@ async function loadTransactions() {
     try {
         const response = await fetch('/api/transactions');
         const transactions = await response.json();
-        
+
         const container = document.getElementById('transactions');
         if (!transactions || transactions.length === 0) {
             container.innerHTML = '<p>No transactions found</p>';
             return;
         }
-        
-        container.innerHTML = transactions.map(tx => `
+
+        container.innerHTML = transactions.map(tx => {
+            // Extract amount from the first posting
+            let amount = 0;
+            if (tx.tpostings && tx.tpostings.length > 0 && tx.tpostings[0].pamount && tx.tpostings[0].pamount.length > 0) {
+                const quantity = tx.tpostings[0].pamount[0].aquantity;
+                amount = quantity.decimalMantissa / Math.pow(10, quantity.decimalPlaces);
+            }
+
+            return `
             <div class="transaction-item">
                 <div class="transaction-left">
-                    <div class="transaction-date">${formatDate(tx.date)}</div>
-                    <div class="transaction-description">${escapeHtml(tx.description)}</div>
+                    <div class="transaction-date">${formatDate(tx.tdate)}</div>
+                    <div class="transaction-description">${escapeHtml(tx.tdescription)}</div>
                     <div class="transaction-account">
-                        ${tx.postings.map(p => escapeHtml(p.account)).join(', ')}
+                        ${tx.tpostings.map(p => escapeHtml(p.paccount)).join(', ')}
                     </div>
                 </div>
                 <div class="transaction-amount">
-                    ${formatCurrency(tx.postings[0]?.amount || 0)}
+                    ${formatCurrency(amount)}
                 </div>
             </div>
-        `).join('');
+        `}).join('');
     } catch (error) {
         console.error('Error loading transactions:', error);
         document.getElementById('transactions').innerHTML = '<p>Error loading transactions</p>';

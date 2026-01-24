@@ -1,4 +1,4 @@
-.PHONY: help build run test clean deps
+.PHONY: help build run test clean deps kill
 
 help:
 	@echo "Minted - hledger Dashboard"
@@ -8,6 +8,7 @@ help:
 	@echo "  make run    - Run the application"
 	@echo "  make test   - Run tests"
 	@echo "  make clean  - Clean build artifacts"
+	@echo "  make kill   - Kill running go processes"
 
 deps:
 	go mod download
@@ -26,3 +27,6 @@ test:
 clean:
 	rm -rf bin/
 	go clean
+
+kill:
+	pkill -f "go run" || true

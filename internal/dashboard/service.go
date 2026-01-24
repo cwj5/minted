@@ -3,8 +3,8 @@ package dashboard
 import (
 	"net/http"
 
+	"github.com/cwj5/minted/internal/hledger"
 	"github.com/gin-gonic/gin"
-	"github.com/yourusername/minted/internal/hledger"
 )
 
 // Service handles dashboard operations
@@ -51,8 +51,8 @@ func (s *Service) HandleTransactions(c *gin.Context) {
 func (s *Service) HandleSummary(c *gin.Context) {
 	// TODO: Implement summary calculation
 	c.JSON(http.StatusOK, gin.H{
-		"totalAssets":     0,
+		"totalAssets":      0,
 		"totalLiabilities": 0,
-		"netWorth":        0,
+		"netWorth":         0,
 	})
 }
