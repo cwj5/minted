@@ -29,4 +29,6 @@ clean:
 	go clean
 
 kill:
+	pkill -f "bin/minted" || true
 	pkill -f "go run" || true
+	lsof -ti:9999 | xargs kill -9 2>/dev/null || true
