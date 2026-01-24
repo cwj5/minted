@@ -389,6 +389,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadYearOverYearChart();
 });
 
+// Convert YYYY-MM to Date for chart display
+function parseMonthToDate(monthStr) {
+    const [year, month] = monthStr.split('-');
+    return new Date(year, parseInt(month) - 1, 1);
+}
+
 // Load and render net worth over time chart
 async function loadNetWorthChart() {
     try {
@@ -402,21 +408,24 @@ async function loadNetWorthChart() {
         const ctx = document.getElementById('netWorthChart');
         if (!ctx) return;
 
-        const labels = data.map(point => point.month);
-        const values = data.map(point => point.netWorth);
+        const chartData = data.map(point => ({
+            x: new Date(point.date),
+            y: point.netWorth
+        }));
 
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
                 datasets: [{
                     label: 'Net Worth',
-                    data: values,
+                    data: chartData,
                     borderColor: '#3498db',
                     backgroundColor: 'rgba(52, 152, 219, 0.1)',
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.3
+                    tension: 0.1,
+                    pointRadius: 0,
+                    pointHoverRadius: 6
                 }]
             },
             options: {
@@ -428,6 +437,15 @@ async function loadNetWorthChart() {
                     }
                 },
                 scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            displayFormats: {
+                                day: 'MMM d, yyyy'
+                            }
+                        }
+                    },
                     y: {
                         beginAtZero: true,
                         ticks: {
@@ -457,15 +475,6 @@ async function loadCategoryTrendsChart() {
         const ctx = document.getElementById('categoryTrendsChart');
         if (!ctx) return;
 
-        // Get all unique months
-        const monthsSet = new Set();
-        data.forEach(cat => {
-            cat.data.forEach(ma => {
-                monthsSet.add(ma.month);
-            });
-        });
-        const labels = Array.from(monthsSet).sort();
-
         // Color palette
         const colors = [
             '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
@@ -473,14 +482,14 @@ async function loadCategoryTrendsChart() {
         ];
 
         const datasets = data.map((cat, idx) => {
-            const amounts = labels.map(month => {
-                const ma = cat.data.find(ma => ma.month === month);
-                return ma ? ma.amount : 0;
-            });
+            const chartData = cat.data.map(ma => ({
+                x: parseMonthToDate(ma.month),
+                y: ma.amount
+            }));
 
             return {
                 label: cat.category,
-                data: amounts,
+                data: chartData,
                 borderColor: colors[idx % colors.length],
                 backgroundColor: colors[idx % colors.length],
                 borderWidth: 2,
@@ -492,7 +501,6 @@ async function loadCategoryTrendsChart() {
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
                 datasets: datasets
             },
             options: {
@@ -508,6 +516,15 @@ async function loadCategoryTrendsChart() {
                     }
                 },
                 scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'month',
+                            displayFormats: {
+                                month: 'MMM yyyy'
+                            }
+                        }
+                    },
                     y: {
                         beginAtZero: true,
                         ticks: {
@@ -537,8 +554,6 @@ async function loadYearOverYearChart() {
         const ctx = document.getElementById('yoyComparisonChart');
         if (!ctx) return;
 
-        const labels = data.map(item => item.month);
-
         // Get all unique years
         const yearsSet = new Set();
         data.forEach(item => {
@@ -554,8 +569,12 @@ async function loadYearOverYearChart() {
             '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#16a085'
         ];
 
+        // For year-over-year, use month (1-12) as x-axis
         const datasets = years.map((year, idx) => {
-            const amounts = data.map(item => item.years[year] || 0);
+            const amounts = data.map(item => ({
+                x: parseInt(item.month),
+                y: item.years[year] || 0
+            }));
 
             return {
                 label: year,
@@ -569,13 +588,24 @@ async function loadYearOverYearChart() {
         new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
                 datasets: datasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
                 scales: {
+                    x: {
+                        type: 'linear',
+                        min: 1,
+                        max: 12,
+                        ticks: {
+                            stepSize: 1,
+                            callback: function (value) {
+                                const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                return months[value] || '';
+                            }
+                        }
+                    },
                     y: {
                         beginAtZero: true,
                         ticks: {

@@ -68,9 +68,9 @@ type CategorySpending struct {
 	Amount   float64 `json:"amount"`
 }
 
-// NetWorthPoint represents net worth at a specific month
+// NetWorthPoint represents net worth at a specific point in time
 type NetWorthPoint struct {
-	Month    string  `json:"month"`
+	Date     string  `json:"date"`
 	NetWorth float64 `json:"netWorth"`
 }
 
@@ -557,7 +557,7 @@ func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
 	return result, nil
 }
 
-// GetNetWorthOverTime calculates net worth for each month
+// GetNetWorthOverTime calculates net worth for each day with transactions
 func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
 	transactions, err := p.GetTransactions(0)
 	if err != nil {
@@ -566,19 +566,19 @@ func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
 
 	// Track cumulative balance by account
 	accountBalances := make(map[string]float64)
-	monthlyNetWorth := make(map[string]float64)
+	dailyNetWorth := make(map[string]float64)
 
 	// Get all transactions sorted by date
 	sort.Slice(transactions, func(i, j int) bool {
 		return transactions[i].Date < transactions[j].Date
 	})
 
-	// Track which months we've seen
-	monthSet := make(map[string]bool)
+	// Track which dates we've seen
+	dateSet := make(map[string]bool)
 
 	for _, tx := range transactions {
-		month := getYearMonth(tx.Date)
-		monthSet[month] = true
+		date := tx.Date
+		dateSet[date] = true
 
 		// Accumulate balances
 		for _, posting := range tx.Postings {
@@ -589,7 +589,7 @@ func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
 			accountBalances[posting.Account] += amount
 		}
 
-		// Calculate and store net worth for this month
+		// Calculate and store net worth for this date
 		var totalAssets float64
 		var totalLiabilities float64
 
@@ -602,22 +602,22 @@ func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
 		}
 
 		netWorth := totalAssets - totalLiabilities
-		monthlyNetWorth[month] = math.Round(netWorth*100) / 100
+		dailyNetWorth[date] = math.Round(netWorth*100) / 100
 	}
 
-	// Get all unique months and sort
-	var months []string
-	for m := range monthSet {
-		months = append(months, m)
+	// Get all unique dates and sort
+	var dates []string
+	for d := range dateSet {
+		dates = append(dates, d)
 	}
-	sort.Strings(months)
+	sort.Strings(dates)
 
-	// Build result with months in order
+	// Build result with dates in order
 	var result []NetWorthPoint
-	for _, month := range months {
+	for _, date := range dates {
 		result = append(result, NetWorthPoint{
-			Month:    month,
-			NetWorth: monthlyNetWorth[month],
+			Date:     date,
+			NetWorth: dailyNetWorth[date],
 		})
 	}
 
