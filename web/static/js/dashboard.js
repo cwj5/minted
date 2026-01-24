@@ -384,4 +384,216 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTransactions();
     loadIncomeExpensesChart();
     loadCategorySpendingChart();
+    loadNetWorthChart();
+    loadCategoryTrendsChart();
+    loadYearOverYearChart();
 });
+
+// Load and render net worth over time chart
+async function loadNetWorthChart() {
+    try {
+        const response = await fetch('/api/net-worth-over-time');
+        const data = await response.json();
+
+        if (!data || data.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('netWorthChart');
+        if (!ctx) return;
+
+        const labels = data.map(point => point.month);
+        const values = data.map(point => point.netWorth);
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Net Worth',
+                    data: values,
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function (value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading net worth chart:', error);
+    }
+}
+
+// Load and render category trends chart
+async function loadCategoryTrendsChart() {
+    try {
+        const response = await fetch('/api/category-trends');
+        const data = await response.json();
+
+        if (!data || data.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('categoryTrendsChart');
+        if (!ctx) return;
+
+        // Get all unique months
+        const monthsSet = new Set();
+        data.forEach(cat => {
+            cat.data.forEach(ma => {
+                monthsSet.add(ma.month);
+            });
+        });
+        const labels = Array.from(monthsSet).sort();
+
+        // Color palette
+        const colors = [
+            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#16a085'
+        ];
+
+        const datasets = data.map((cat, idx) => {
+            const amounts = labels.map(month => {
+                const ma = cat.data.find(ma => ma.month === month);
+                return ma ? ma.amount : 0;
+            });
+
+            return {
+                label: cat.category,
+                data: amounts,
+                borderColor: colors[idx % colors.length],
+                backgroundColor: colors[idx % colors.length],
+                borderWidth: 2,
+                fill: false,
+                tension: 0.3
+            };
+        });
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function (value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading category trends chart:', error);
+    }
+}
+
+// Load and render year-over-year comparison chart
+async function loadYearOverYearChart() {
+    try {
+        const response = await fetch('/api/year-over-year-comparison');
+        const data = await response.json();
+
+        if (!data || data.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('yoyComparisonChart');
+        if (!ctx) return;
+
+        const labels = data.map(item => item.month);
+
+        // Get all unique years
+        const yearsSet = new Set();
+        data.forEach(item => {
+            Object.keys(item.years).forEach(year => {
+                yearsSet.add(year);
+            });
+        });
+        const years = Array.from(yearsSet).sort();
+
+        // Color palette
+        const colors = [
+            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#16a085'
+        ];
+
+        const datasets = years.map((year, idx) => {
+            const amounts = data.map(item => item.years[year] || 0);
+
+            return {
+                label: year,
+                data: amounts,
+                backgroundColor: colors[idx % colors.length],
+                borderColor: colors[idx % colors.length],
+                borderWidth: 1
+            };
+        });
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function (value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading year-over-year chart:', error);
+    }
+}
+

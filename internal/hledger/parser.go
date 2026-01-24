@@ -68,6 +68,30 @@ type CategorySpending struct {
 	Amount   float64 `json:"amount"`
 }
 
+// NetWorthPoint represents net worth at a specific month
+type NetWorthPoint struct {
+	Month    string  `json:"month"`
+	NetWorth float64 `json:"netWorth"`
+}
+
+// CategoryTrendData represents spending trend for a single category
+type CategoryTrendData struct {
+	Category string            `json:"category"`
+	Data     []MonthAmountPair `json:"data"`
+}
+
+// MonthAmountPair represents a month and amount
+type MonthAmountPair struct {
+	Month  string  `json:"month"`
+	Amount float64 `json:"amount"`
+}
+
+// YearOverYearData represents same-month comparison across years
+type YearOverYearData struct {
+	Month string             `json:"month"` // e.g., "01" for January
+	Years map[string]float64 `json:"years"` // year -> spending amount, e.g., "2024" -> 500.00
+}
+
 // Parser handles hledger journal parsing
 type Parser struct {
 	journalFile string
@@ -528,6 +552,151 @@ func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
 			return result[i].Month < result[j].Month
 		}
 		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
+}
+
+// GetNetWorthOverTime calculates net worth for each month
+func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
+	transactions, err := p.GetTransactions(0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Track cumulative balance by account
+	accountBalances := make(map[string]float64)
+	monthlyNetWorth := make(map[string]float64)
+
+	// Get all transactions sorted by date
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].Date < transactions[j].Date
+	})
+
+	// Track which months we've seen
+	monthSet := make(map[string]bool)
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+		monthSet[month] = true
+
+		// Accumulate balances
+		for _, posting := range tx.Postings {
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+			accountBalances[posting.Account] += amount
+		}
+
+		// Calculate and store net worth for this month
+		var totalAssets float64
+		var totalLiabilities float64
+
+		for account, balance := range accountBalances {
+			if strings.HasPrefix(account, "Assets:") {
+				totalAssets += balance
+			} else if strings.HasPrefix(account, "Liabilities:") {
+				totalLiabilities += -balance
+			}
+		}
+
+		netWorth := totalAssets - totalLiabilities
+		monthlyNetWorth[month] = math.Round(netWorth*100) / 100
+	}
+
+	// Get all unique months and sort
+	var months []string
+	for m := range monthSet {
+		months = append(months, m)
+	}
+	sort.Strings(months)
+
+	// Build result with months in order
+	var result []NetWorthPoint
+	for _, month := range months {
+		result = append(result, NetWorthPoint{
+			Month:    month,
+			NetWorth: monthlyNetWorth[month],
+		})
+	}
+
+	return result, nil
+}
+
+// GetCategoryTrends returns spending trends for each category
+func (p *Parser) GetCategoryTrends() ([]CategoryTrendData, error) {
+	categorySpending, err := p.GetCategorySpending()
+	if err != nil {
+		return nil, err
+	}
+
+	// Group by category
+	categories := make(map[string][]MonthAmountPair)
+	for _, spending := range categorySpending {
+		categories[spending.Category] = append(categories[spending.Category], MonthAmountPair{
+			Month:  spending.Month,
+			Amount: spending.Amount,
+		})
+	}
+
+	// Build result
+	var result []CategoryTrendData
+	for category, data := range categories {
+		// Sort by month
+		sort.Slice(data, func(i, j int) bool {
+			return data[i].Month < data[j].Month
+		})
+
+		result = append(result, CategoryTrendData{
+			Category: category,
+			Data:     data,
+		})
+	}
+
+	// Sort by category name
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
+}
+
+// GetYearOverYearComparison returns spending comparison for same months across years
+func (p *Parser) GetYearOverYearComparison() ([]YearOverYearData, error) {
+	categorySpending, err := p.GetCategorySpending()
+	if err != nil {
+		return nil, err
+	}
+
+	// Group by month (MM) and year
+	// Map of "MM" -> year -> total spending
+	monthComparison := make(map[string]map[string]float64)
+
+	for _, spending := range categorySpending {
+		// Extract month (MM) from YYYY-MM
+		month := spending.Month[5:7] // Get "MM" part
+		year := spending.Month[:4]   // Get "YYYY" part
+
+		if monthComparison[month] == nil {
+			monthComparison[month] = make(map[string]float64)
+		}
+
+		monthComparison[month][year] += spending.Amount
+	}
+
+	// Build result sorted by month
+	var result []YearOverYearData
+	for month := range monthComparison {
+		result = append(result, YearOverYearData{
+			Month: month,
+			Years: monthComparison[month],
+		})
+	}
+
+	// Sort by month
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Month < result[j].Month
 	})
 
 	return result, nil
