@@ -17,7 +17,7 @@ type Service struct {
 // NewService creates a new dashboard service
 func NewService(journalFile string, settings *config.Settings) *Service {
 	return &Service{
-		parser:   hledger.NewParser(journalFile),
+		parser:   hledger.NewParser(journalFile, settings),
 		settings: settings,
 	}
 }

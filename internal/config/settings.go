@@ -10,9 +10,9 @@ import (
 
 // Settings represents all application configuration
 type Settings struct {
-	Variables   map[string]string `json:"variables"`
-	Tiers       []Tier            `json:"tiers"`
-	Theme       string            `json:"theme"`
+	Variables   map[string]string      `json:"variables"`
+	Tiers       []Tier                 `json:"tiers"`
+	Theme       string                 `json:"theme"`
 	Preferences map[string]interface{} `json:"preferences"`
 }
 

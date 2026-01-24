@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cwj5/minted/internal/config"
 )
 
 // Account represents an hledger account
@@ -95,12 +97,14 @@ type YearOverYearData struct {
 // Parser handles hledger journal parsing
 type Parser struct {
 	journalFile string
+	settings    *config.Settings
 }
 
 // NewParser creates a new hledger parser
-func NewParser(journalFile string) *Parser {
+func NewParser(journalFile string, settings *config.Settings) *Parser {
 	return &Parser{
 		journalFile: journalFile,
+		settings:    settings,
 	}
 }
 
@@ -140,7 +144,7 @@ func (p *Parser) GetAccounts() ([]Account, error) {
 				}
 
 				// Only include Assets and Liabilities accounts in the main accounts section
-				if !strings.HasPrefix(name, "Assets:") && !strings.HasPrefix(name, "Liabilities:") {
+				if !strings.HasPrefix(name, "assets:") && !strings.HasPrefix(name, "liabilities:") {
 					continue
 				}
 
@@ -184,7 +188,7 @@ func min(a, b int) int {
 }
 
 // GetTransactions retrieves recent transactions
-func (p *Parser) GetTransactions(limit int) ([]Transaction, error) {
+func (p *Parser) GetTransactions() ([]Transaction, error) {
 	cmd := exec.Command("hledger", "-f", p.journalFile, "print", "-O", "json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -200,11 +204,6 @@ func (p *Parser) GetTransactions(limit int) ([]Transaction, error) {
 	if err != nil {
 		log.Printf("Error parsing JSON: %v", err)
 		return nil, err
-	}
-
-	// Limit results
-	if limit > 0 && len(transactions) > limit {
-		transactions = transactions[:limit]
 	}
 
 	return transactions, nil
@@ -259,7 +258,7 @@ func getCurrentYearMonth() string {
 
 // GetMonthlySpending aggregates expenses by category and month
 func (p *Parser) GetMonthlySpending() (map[string]map[string]float64, error) {
-	transactions, err := p.GetTransactions(0)
+	transactions, err := p.GetTransactions()
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +271,7 @@ func (p *Parser) GetMonthlySpending() (map[string]map[string]float64, error) {
 
 		for _, posting := range tx.Postings {
 			// Only include Expenses accounts
-			if !strings.HasPrefix(posting.Account, "Expenses:") {
+			if !strings.HasPrefix(posting.Account, "expenses:") {
 				continue
 			}
 
@@ -421,7 +420,7 @@ func (p *Parser) GetBudgetData() ([]BudgetItem, error) {
 
 // GetMonthlyMetrics returns income, expenses, and net worth for each month
 func (p *Parser) GetMonthlyMetrics() ([]MonthlyMetrics, error) {
-	transactions, err := p.GetTransactions(0)
+	transactions, err := p.GetTransactions()
 	if err != nil {
 		return nil, err
 	}
@@ -442,11 +441,11 @@ func (p *Parser) GetMonthlyMetrics() ([]MonthlyMetrics, error) {
 			}
 
 			// Positive amounts for income (convert negative to positive), negative for expenses
-			if strings.HasPrefix(posting.Account, "Income:") {
+			if strings.HasPrefix(posting.Account, "income:") {
 				data := monthlyData[month]
 				data.income += -amount // Income is negative in hledger, so negate it
 				monthlyData[month] = data
-			} else if strings.HasPrefix(posting.Account, "Expenses:") {
+			} else if strings.HasPrefix(posting.Account, "expenses:") {
 				data := monthlyData[month]
 				data.expenses += amount
 				monthlyData[month] = data
@@ -491,7 +490,7 @@ func (p *Parser) GetMonthlyMetrics() ([]MonthlyMetrics, error) {
 
 // GetCategorySpending returns spending by category for each month
 func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
-	transactions, err := p.GetTransactions(0)
+	transactions, err := p.GetTransactions()
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +503,7 @@ func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
 
 		for _, posting := range tx.Postings {
 			// Only include Expenses accounts
-			if !strings.HasPrefix(posting.Account, "Expenses:") {
+			if !strings.HasPrefix(posting.Account, "expenses:") {
 				continue
 			}
 
@@ -559,7 +558,7 @@ func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
 
 // GetNetWorthOverTime calculates net worth for each day with transactions
 func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
-	transactions, err := p.GetTransactions(0)
+	transactions, err := p.GetTransactions()
 	if err != nil {
 		return nil, err
 	}
@@ -594,9 +593,9 @@ func (p *Parser) GetNetWorthOverTime() ([]NetWorthPoint, error) {
 		var totalLiabilities float64
 
 		for account, balance := range accountBalances {
-			if strings.HasPrefix(account, "Assets:") {
+			if strings.HasPrefix(account, "assets:") {
 				totalAssets += balance
-			} else if strings.HasPrefix(account, "Liabilities:") {
+			} else if strings.HasPrefix(account, "liabilities:") {
 				totalLiabilities += -balance
 			}
 		}
@@ -631,30 +630,50 @@ func (p *Parser) GetCategoryTrends() ([]CategoryTrendData, error) {
 		return nil, err
 	}
 
-	// Group by category
-	categories := make(map[string][]MonthAmountPair)
+	// Group by tier instead of category
+	tiers := make(map[string][]MonthAmountPair)
 	for _, spending := range categorySpending {
-		categories[spending.Category] = append(categories[spending.Category], MonthAmountPair{
-			Month:  spending.Month,
-			Amount: spending.Amount,
-		})
+		// Look up which tier this category belongs to
+		tier := p.settings.GetTierForCategory(spending.Category)
+		tierName := spending.Category // default to category name if not in any tier
+		if tier != nil {
+			tierName = tier.Name
+		}
+
+		// Find if we already have this month for this tier
+		found := false
+		for i, pair := range tiers[tierName] {
+			if pair.Month == spending.Month {
+				// Add to existing month total
+				tiers[tierName][i].Amount += spending.Amount
+				found = true
+				break
+			}
+		}
+		if !found {
+			// New month for this tier
+			tiers[tierName] = append(tiers[tierName], MonthAmountPair{
+				Month:  spending.Month,
+				Amount: spending.Amount,
+			})
+		}
 	}
 
 	// Build result
 	var result []CategoryTrendData
-	for category, data := range categories {
+	for tierName, data := range tiers {
 		// Sort by month
 		sort.Slice(data, func(i, j int) bool {
 			return data[i].Month < data[j].Month
 		})
 
 		result = append(result, CategoryTrendData{
-			Category: category,
+			Category: tierName,
 			Data:     data,
 		})
 	}
 
-	// Sort by category name
+	// Sort by tier name
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Category < result[j].Category
 	})
