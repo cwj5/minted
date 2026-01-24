@@ -49,11 +49,32 @@ func (s *Service) HandleTransactions(c *gin.Context) {
 
 // HandleSummary returns financial summary
 func (s *Service) HandleSummary(c *gin.Context) {
-	// TODO: Implement summary calculation
+	accounts, err := s.parser.GetAccounts()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var totalAssets float64
+	var totalLiabilities float64
+
+	// Sum up assets and liabilities
+	for _, account := range accounts {
+		if account.Name[:7] == "Assets:" {
+			totalAssets += account.Balance
+		} else if account.Name[:12] == "Liabilities:" {
+			// Liabilities in hledger are negative, convert to positive for display
+			totalLiabilities += -account.Balance
+		}
+	}
+
+	// Net worth is Assets - Liabilities
+	netWorth := totalAssets - totalLiabilities
+
 	c.JSON(http.StatusOK, gin.H{
-		"totalAssets":      0,
-		"totalLiabilities": 0,
-		"netWorth":         0,
+		"totalAssets":      totalAssets,
+		"totalLiabilities": totalLiabilities,
+		"netWorth":         netWorth,
 	})
 }
 
