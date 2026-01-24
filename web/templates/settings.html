@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Minted</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .settings-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .back-link {
+            color: #3498db;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .settings-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .settings-section h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+
+        .tier-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .tier-item {
+            background: #f8f9fa;
+            border-left: 4px solid;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 20px;
+        }
+
+        .tier-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .tier-categories {
+            font-size: 13px;
+            color: #555;
+            margin: 5px 0;
+        }
+
+        .tier-categories span {
+            display: inline-block;
+            background: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            margin: 3px 3px 3px 0;
+            border: 1px solid #ddd;
+        }
+
+        .tier-color {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .color-box {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 2px solid #ddd;
+        }
+
+        .tier-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-small {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 13px;
+        }
+
+        input[type="text"],
+        input[type="color"],
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+
+        input[type="text"]:focus,
+        input[type="color"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .category-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .category-input-group input {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .add-category-btn {
+            padding: 8px 12px;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #7f8c8d;
+        }
+
+        .close-btn:hover {
+            color: #2c3e50;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="settings-container">
+        <div class="settings-header">
+            <h1>⚙️ Settings</h1>
+            <a href="/" class="back-link">← Back to Dashboard</a>
+        </div>
+
+        <div id="successMessage" class="success-message"></div>
+        <div id="errorMessage" class="error-message"></div>
+
+        <!-- Tiers Section -->
+        <div class="settings-section">
+            <h2>Spending Tiers</h2>
+            <p>Define spending categories and group them into tiers for better visualization.</p>
+            
+            <button class="btn-primary" onclick="openNewTierModal()">+ Add New Tier</button>
+
+            <ul class="tier-list" id="tiersList">
+                <li style="text-align: center; color: #7f8c8d;">Loading tiers...</li>
+            </ul>
+        </div>
+
+        <!-- Theme Section -->
+        <div class="settings-section">
+            <h2>Appearance</h2>
+            <div class="form-group">
+                <label for="themeSelect">Theme</label>
+                <select id="themeSelect" onchange="updateTheme()">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Preferences Section -->
+        <div class="settings-section">
+            <h2>Preferences</h2>
+            <div class="form-group">
+                <label for="dateRangeSelect">Default Date Range</label>
+                <select id="dateRangeSelect" onchange="updateDateRange()">
+                    <option value="1month">Last 1 Month</option>
+                    <option value="3months">Last 3 Months</option>
+                    <option value="6months">Last 6 Months</option>
+                    <option value="1year">Last 1 Year</option>
+                    <option value="all">All Time</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="transactionLimit">Transaction Limit (0 = unlimited)</label>
+                <input type="text" id="transactionLimit" placeholder="Enter number" onchange="updateTransactionLimit()">
+            </div>
+        </div>
+    </div>
+
+    <!-- New/Edit Tier Modal -->
+    <div id="tierModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="tierModalTitle">New Tier</h2>
+                <button class="close-btn" onclick="closeTierModal()">×</button>
+            </div>
+            <div id="tierModalError" class="error-message" style="display: none;"></div>
+            
+            <div class="form-group">
+                <label for="tierNameInput">Tier Name</label>
+                <input type="text" id="tierNameInput" placeholder="e.g., Essential, Discretionary">
+            </div>
+
+            <div class="form-group">
+                <label for="tierColorInput">Color</label>
+                <input type="color" id="tierColorInput">
+            </div>
+
+            <div class="form-group">
+                <label>Categories</label>
+                <div id="tierCategoriesInput"></div>
+                <button class="btn-secondary btn-small" onclick="addCategoryInputField()">+ Add Category</button>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn-primary" onclick="saveTier()">Save Tier</button>
+                <button class="btn-secondary" onclick="closeTierModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSettings = null;
+        let editingTierIndex = null;
+
+        // Load settings on page load
+        window.addEventListener('DOMContentLoaded', loadSettings);
+
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                if (!response.ok) throw new Error('Failed to load settings');
+                currentSettings = await response.json();
+                
+                renderTiers();
+                updateThemeUI();
+                updatePreferencesUI();
+            } catch (error) {
+                showError('Failed to load settings: ' + error.message);
+            }
+        }
+
+        function renderTiers() {
+            const tiersList = document.getElementById('tiersList');
+            if (!currentSettings.tiers || currentSettings.tiers.length === 0) {
+                tiersList.innerHTML = '<li style="text-align: center; color: #7f8c8d;">No tiers yet. Create one to get started!</li>';
+                return;
+            }
+
+            tiersList.innerHTML = currentSettings.tiers.map((tier, index) => `
+                <li class="tier-item" style="border-color: ${tier.color};">
+                    <div>
+                        <div class="tier-name">${tier.name}</div>
+                        <div class="tier-categories">
+                            ${tier.categories.length > 0 ? tier.categories.map(cat => `<span>${cat}</span>`).join('') : '<em>No categories</em>'}
+                        </div>
+                    </div>
+                    <div class="tier-color">
+                        <div class="color-box" style="background: ${tier.color};"></div>
+                        <div class="tier-actions">
+                            <button class="btn-secondary btn-small" onclick="editTier(${index})">Edit</button>
+                            <button class="btn-danger btn-small" onclick="deleteTier(${index})">Delete</button>
+                        </div>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        function openNewTierModal() {
+            editingTierIndex = null;
+            document.getElementById('tierModalTitle').textContent = 'New Tier';
+            document.getElementById('tierNameInput').value = '';
+            document.getElementById('tierColorInput').value = '#3498db';
+            document.getElementById('tierCategoriesInput').innerHTML = '';
+            addCategoryInputField();
+            document.getElementById('tierModal').classList.add('active');
+        }
+
+        function editTier(index) {
+            const tier = currentSettings.tiers[index];
+            editingTierIndex = index;
+            document.getElementById('tierModalTitle').textContent = `Edit Tier: ${tier.name}`;
+            document.getElementById('tierNameInput').value = tier.name;
+            document.getElementById('tierColorInput').value = tier.color;
+            
+            const categoriesInput = document.getElementById('tierCategoriesInput');
+            categoriesInput.innerHTML = tier.categories.map((cat, i) => `
+                <div class="category-input-group">
+                    <input type="text" value="${cat}" onkeyup="this.value = this.value.toUpperCase()">
+                    <button class="btn-danger btn-small" onclick="this.parentElement.remove()">Remove</button>
+                </div>
+            `).join('');
+            
+            document.getElementById('tierModal').classList.add('active');
+        }
+
+        function closeTierModal() {
+            document.getElementById('tierModal').classList.remove('active');
+            document.getElementById('tierModalError').style.display = 'none';
+        }
+
+        function addCategoryInputField() {
+            const container = document.getElementById('tierCategoriesInput');
+            const input = document.createElement('div');
+            input.className = 'category-input-group';
+            input.innerHTML = `
+                <input type="text" placeholder="Category name" onkeyup="this.value = this.value.toUpperCase()">
+                <button class="btn-danger btn-small" onclick="this.parentElement.remove()">Remove</button>
+            `;
+            container.appendChild(input);
+        }
+
+        async function saveTier() {
+            const name = document.getElementById('tierNameInput').value.trim();
+            const color = document.getElementById('tierColorInput').value;
+            const categoryInputs = document.querySelectorAll('#tierCategoriesInput input');
+            const categories = Array.from(categoryInputs)
+                .map(input => input.value.trim().toUpperCase())
+                .filter(cat => cat.length > 0);
+
+            if (!name) {
+                showTierError('Tier name is required');
+                return;
+            }
+
+            if (editingTierIndex !== null) {
+                // Update existing tier
+                currentSettings.tiers[editingTierIndex] = { name, categories, color };
+            } else {
+                // Add new tier
+                currentSettings.tiers.push({ name, categories, color });
+            }
+
+            await saveSettings();
+            closeTierModal();
+            renderTiers();
+        }
+
+        async function deleteTier(index) {
+            if (confirm(`Delete tier "${currentSettings.tiers[index].name}"?`)) {
+                currentSettings.tiers.splice(index, 1);
+                await saveSettings();
+                renderTiers();
+            }
+        }
+
+        function updateThemeUI() {
+            document.getElementById('themeSelect').value = currentSettings.theme || 'light';
+        }
+
+        async function updateTheme() {
+            currentSettings.theme = document.getElementById('themeSelect').value;
+            await saveSettings();
+        }
+
+        function updatePreferencesUI() {
+            document.getElementById('dateRangeSelect').value = currentSettings.preferences?.defaultDateRange || '6months';
+            document.getElementById('transactionLimit').value = currentSettings.preferences?.transactionLimit || '0';
+        }
+
+        async function updateDateRange() {
+            if (!currentSettings.preferences) currentSettings.preferences = {};
+            currentSettings.preferences.defaultDateRange = document.getElementById('dateRangeSelect').value;
+            await saveSettings();
+        }
+
+        async function updateTransactionLimit() {
+            if (!currentSettings.preferences) currentSettings.preferences = {};
+            const value = parseInt(document.getElementById('transactionLimit').value) || 0;
+            currentSettings.preferences.transactionLimit = value;
+            await saveSettings();
+        }
+
+        async function saveSettings() {
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(currentSettings)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to save settings');
+                }
+
+                showSuccess('Settings saved successfully!');
+            } catch (error) {
+                showError('Failed to save settings: ' + error.message);
+            }
+        }
+
+        function showSuccess(message) {
+            const successMsg = document.getElementById('successMessage');
+            successMsg.textContent = message;
+            successMsg.style.display = 'block';
+            setTimeout(() => {
+                successMsg.style.display = 'none';
+            }, 3000);
+        }
+
+        function showError(message) {
+            const errorMsg = document.getElementById('errorMessage');
+            errorMsg.textContent = message;
+            errorMsg.style.display = 'block';
+        }
+
+        function showTierError(message) {
+            const errorMsg = document.getElementById('tierModalError');
+            errorMsg.textContent = message;
+            errorMsg.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

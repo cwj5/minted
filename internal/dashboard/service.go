@@ -29,6 +29,13 @@ func (s *Service) HandleIndex(c *gin.Context) {
 	})
 }
 
+// HandleSettings serves the settings page
+func (s *Service) HandleSettings(c *gin.Context) {
+	c.HTML(http.StatusOK, "settings.html", gin.H{
+		"title": "Settings - Minted",
+	})
+}
+
 // HandleAccounts returns account data as JSON
 func (s *Service) HandleAccounts(c *gin.Context) {
 	accounts, err := s.parser.GetAccounts()
