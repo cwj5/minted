@@ -6,6 +6,94 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
+// Store settings globally for color mapping
+let appSettings = null;
+
+// Load settings and build category-to-color mapping
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        appSettings = data;
+    } catch (error) {
+        console.error('Error loading settings:', error);
+        appSettings = null;
+    }
+}
+
+// Convert hex color to RGB
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
+// Adjust color brightness
+function adjustBrightness(hex, factor) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+
+    const r = Math.min(255, Math.max(0, Math.round(rgb.r * factor)));
+    const g = Math.min(255, Math.max(0, Math.round(rgb.g * factor)));
+    const b = Math.min(255, Math.max(0, Math.round(rgb.b * factor)));
+
+    return '#' + [r, g, b].map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    }).join('');
+}
+
+// Get tier info for a category
+function getTierInfo(category) {
+    if (!appSettings || !appSettings.tiers) {
+        return { color: '#95a5a6', tierCategories: [], position: -1 };
+    }
+
+    for (const tier of appSettings.tiers) {
+        if (tier.categories && tier.categories.includes(category)) {
+            const position = tier.categories.indexOf(category);
+            return {
+                color: tier.color || '#95a5a6',
+                tierCategories: tier.categories,
+                position: position
+            };
+        }
+    }
+
+    return { color: '#95a5a6', tierCategories: [], position: -1 };
+}
+
+// Get tier color by tier name
+function getTierColorByName(tierName) {
+    if (!appSettings || !appSettings.tiers) {
+        return '#95a5a6';
+    }
+
+    for (const tier of appSettings.tiers) {
+        if (tier.name === tierName) {
+            return tier.color || '#95a5a6';
+        }
+    }
+
+    return '#95a5a6';
+}
+
+// Get color with brightness variation for charts
+function getCategoryColor(category) {
+    const tierInfo = getTierInfo(category);
+    if (tierInfo.position === -1) {
+        return tierInfo.color;
+    }
+
+    // Create brightness variations within the tier
+    const totalInTier = tierInfo.tierCategories.length;
+    const brightnessFactor = 0.6 + (tierInfo.position / (totalInTier + 2)) * 0.8;
+    return adjustBrightness(tierInfo.color, brightnessFactor);
+}
+
 // Load summary data
 async function loadSummary() {
     try {
@@ -334,14 +422,42 @@ async function loadCategorySpendingChart() {
             categoryTotals[item.category] += item.amount;
         });
 
-        const labels = Object.keys(categoryTotals).sort();
-        const data = labels.map(cat => categoryTotals[cat]);
+        // Sort categories by total spending (descending)
+        const sortedCategories = Object.entries(categoryTotals)
+            .sort((a, b) => b[1] - a[1]);
 
-        // Color palette
-        const colors = [
-            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
-            '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#16a085'
-        ];
+        // Take top 10 and aggregate the rest as "Other"
+        const TOP_N = 10;
+        let labels = [];
+        let data = [];
+
+        if (sortedCategories.length <= TOP_N) {
+            // If we have 10 or fewer categories, show them all
+            labels = sortedCategories.map(([cat, _]) => cat);
+            data = sortedCategories.map(([_, amount]) => amount);
+        } else {
+            // Show top 10 + "Other"
+            const top10 = sortedCategories.slice(0, TOP_N);
+            const rest = sortedCategories.slice(TOP_N);
+
+            labels = top10.map(([cat, _]) => cat);
+            data = top10.map(([_, amount]) => amount);
+
+            // Calculate "Other" total
+            const otherTotal = rest.reduce((sum, [_, amount]) => sum + amount, 0);
+            if (otherTotal > 0) {
+                labels.push('Other');
+                data.push(otherTotal);
+            }
+        }
+
+        // Get tier colors for each category with brightness variation
+        const colors = labels.map(label => {
+            if (label === 'Other') {
+                return '#95a5a6'; // Gray for "Other"
+            }
+            return getCategoryColor(label);
+        });
 
         new Chart(ctx, {
             type: 'doughnut',
@@ -349,7 +465,7 @@ async function loadCategorySpendingChart() {
                 labels: labels,
                 datasets: [{
                     data: data,
-                    backgroundColor: colors.slice(0, labels.length),
+                    backgroundColor: colors,
                     borderColor: '#ffffff',
                     borderWidth: 2
                 }]
@@ -378,15 +494,17 @@ async function loadCategorySpendingChart() {
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
-    loadSummary();
-    loadBudgetData();
-    loadAccounts();
-    loadTransactions();
-    loadIncomeExpensesChart();
-    loadCategorySpendingChart();
-    loadNetWorthChart();
-    loadCategoryTrendsChart();
-    loadYearOverYearChart();
+    loadSettings().then(() => {
+        loadSummary();
+        loadBudgetData();
+        loadAccounts();
+        loadTransactions();
+        loadIncomeExpensesChart();
+        loadCategorySpendingChart();
+        loadNetWorthChart();
+        loadCategoryTrendsChart();
+        loadYearOverYearChart();
+    });
 });
 
 // Convert YYYY-MM to Date for chart display
@@ -475,23 +593,20 @@ async function loadCategoryTrendsChart() {
         const ctx = document.getElementById('categoryTrendsChart');
         if (!ctx) return;
 
-        // Color palette
-        const colors = [
-            '#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
-            '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#16a085'
-        ];
-
         const datasets = data.map((cat, idx) => {
             const chartData = cat.data.map(ma => ({
                 x: parseMonthToDate(ma.month),
                 y: ma.amount
             }));
 
+            // For trends chart, use tier color by name since it's aggregated by tier
+            const categoryColor = getTierColorByName(cat.category);
+
             return {
                 label: cat.category,
                 data: chartData,
-                borderColor: colors[idx % colors.length],
-                backgroundColor: colors[idx % colors.length],
+                borderColor: categoryColor,
+                backgroundColor: categoryColor,
                 borderWidth: 2,
                 fill: false,
                 tension: 0.3
