@@ -1,7 +1,10 @@
 package dashboard
 
 import (
+	"errors"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/cwj5/minted/internal/config"
 	"github.com/cwj5/minted/internal/hledger"
@@ -10,16 +13,146 @@ import (
 
 // Service handles dashboard operations
 type Service struct {
-	parser   *hledger.Parser
-	settings *config.Settings
+	parser          *hledger.Parser
+	settings        *config.Settings
+	cacheMu         sync.RWMutex
+	cache           *CachedData
+	cacheRefreshing bool
+}
+
+// SummaryData represents the summary response payload
+type SummaryData struct {
+	TotalAssets      float64 `json:"totalAssets"`
+	TotalLiabilities float64 `json:"totalLiabilities"`
+	NetWorth         float64 `json:"netWorth"`
+}
+
+// CachedData holds computed dashboard data for quick responses
+type CachedData struct {
+	Accounts         []hledger.Account
+	Transactions     []hledger.Transaction
+	Budget           []hledger.BudgetItem
+	MonthlyMetrics   []hledger.MonthlyMetrics
+	CategorySpending []hledger.CategorySpending
+	NetWorthOverTime []hledger.NetWorthPoint
+	CategoryTrends   []hledger.CategoryTrendData
+	YearOverYear     []hledger.YearOverYearData
+	Summary          SummaryData
+	LastRefresh      time.Time
+	Stale            bool
 }
 
 // NewService creates a new dashboard service
 func NewService(journalFile string, settings *config.Settings) *Service {
-	return &Service{
+	s := &Service{
 		parser:   hledger.NewParser(journalFile, settings),
 		settings: settings,
 	}
+
+	// Warm the cache at startup (best effort)
+	if err := s.RebuildCache(); err != nil {
+		// Keep running; handlers will return a refresh-needed message until cache succeeds
+	}
+
+	return s
+}
+
+// RebuildCache refreshes all dashboard data in a single pass.
+func (s *Service) RebuildCache() error {
+	s.cacheMu.Lock()
+	if s.cacheRefreshing {
+		s.cacheMu.Unlock()
+		return errors.New("refresh already in progress")
+	}
+	s.cacheRefreshing = true
+	s.cacheMu.Unlock()
+
+	defer func() {
+		s.cacheMu.Lock()
+		s.cacheRefreshing = false
+		s.cacheMu.Unlock()
+	}()
+
+	accounts, err := s.parser.GetAccounts()
+	if err != nil {
+		return err
+	}
+
+	summary := SummaryData{}
+	for _, account := range accounts {
+		if len(account.Name) >= 7 && account.Name[:7] == "assets:" {
+			summary.TotalAssets += account.Balance
+		} else if len(account.Name) >= 12 && account.Name[:12] == "liabilities:" {
+			// Liabilities in hledger are negative; convert to positive
+			summary.TotalLiabilities += -account.Balance
+		}
+	}
+	summary.NetWorth = summary.TotalAssets - summary.TotalLiabilities
+
+	transactions, err := s.parser.GetTransactions()
+	if err != nil {
+		return err
+	}
+
+	budgetItems, err := s.parser.GetBudgetData()
+	if err != nil {
+		return err
+	}
+
+	monthlyMetrics, err := s.parser.GetMonthlyMetrics()
+	if err != nil {
+		return err
+	}
+
+	categorySpending, err := s.parser.GetCategorySpending()
+	if err != nil {
+		return err
+	}
+
+	netWorth, err := s.parser.GetNetWorthOverTime()
+	if err != nil {
+		return err
+	}
+
+	categoryTrends, err := s.parser.GetCategoryTrends()
+	if err != nil {
+		return err
+	}
+
+	yearOverYear, err := s.parser.GetYearOverYearComparison()
+	if err != nil {
+		return err
+	}
+
+	newCache := &CachedData{
+		Accounts:         accounts,
+		Transactions:     transactions,
+		Budget:           budgetItems,
+		MonthlyMetrics:   monthlyMetrics,
+		CategorySpending: categorySpending,
+		NetWorthOverTime: netWorth,
+		CategoryTrends:   categoryTrends,
+		YearOverYear:     yearOverYear,
+		Summary:          summary,
+		LastRefresh:      time.Now(),
+		Stale:            false,
+	}
+
+	s.cacheMu.Lock()
+	s.cache = newCache
+	s.cacheMu.Unlock()
+
+	return nil
+}
+
+// getCache safely returns the cached data
+func (s *Service) getCache() (*CachedData, bool) {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	if s.cache == nil {
+		return nil, false
+	}
+	return s.cache, true
 }
 
 // HandleIndex serves the main dashboard page
@@ -38,113 +171,97 @@ func (s *Service) HandleSettings(c *gin.Context) {
 
 // HandleAccounts returns account data as JSON
 func (s *Service) HandleAccounts(c *gin.Context) {
-	accounts, err := s.parser.GetAccounts()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, accounts)
+	c.JSON(http.StatusOK, cache.Accounts)
 }
 
 // HandleTransactions returns transaction data as JSON
 func (s *Service) HandleTransactions(c *gin.Context) {
-	transactions, err := s.parser.GetTransactions()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, transactions)
+	c.JSON(http.StatusOK, cache.Transactions)
 }
 
 // HandleSummary returns financial summary
 func (s *Service) HandleSummary(c *gin.Context) {
-	accounts, err := s.parser.GetAccounts()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
 
-	var totalAssets float64
-	var totalLiabilities float64
-
-	// Sum up assets and liabilities
-	for _, account := range accounts {
-		if account.Name[:7] == "assets:" {
-			totalAssets += account.Balance
-		} else if account.Name[:12] == "liabilities:" {
-			// Liabilities in hledger are negative, convert to positive for display
-			totalLiabilities += -account.Balance
-		}
-	}
-
-	// Net worth is Assets - Liabilities
-	netWorth := totalAssets - totalLiabilities
-
 	c.JSON(http.StatusOK, gin.H{
-		"totalAssets":      totalAssets,
-		"totalLiabilities": totalLiabilities,
-		"netWorth":         netWorth,
+		"totalAssets":      cache.Summary.TotalAssets,
+		"totalLiabilities": cache.Summary.TotalLiabilities,
+		"netWorth":         cache.Summary.NetWorth,
 	})
 }
 
 // HandleBudgetComparison returns budget data with historical averages
 func (s *Service) HandleBudgetComparison(c *gin.Context) {
-	budgetItems, err := s.parser.GetBudgetData()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, budgetItems)
+	c.JSON(http.StatusOK, cache.Budget)
 }
 
 // HandleMonthlyMetrics returns monthly income, expenses, and savings
 func (s *Service) HandleMonthlyMetrics(c *gin.Context) {
-	metrics, err := s.parser.GetMonthlyMetrics()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, metrics)
+	c.JSON(http.StatusOK, cache.MonthlyMetrics)
 }
 
 // HandleCategorySpending returns spending by category over time
 func (s *Service) HandleCategorySpending(c *gin.Context) {
-	spending, err := s.parser.GetCategorySpending()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, spending)
+	c.JSON(http.StatusOK, cache.CategorySpending)
 }
 
 // HandleNetWorthOverTime returns net worth for each month
 func (s *Service) HandleNetWorthOverTime(c *gin.Context) {
-	data, err := s.parser.GetNetWorthOverTime()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, cache.NetWorthOverTime)
 }
 
 // HandleCategoryTrends returns spending trends for each category
 func (s *Service) HandleCategoryTrends(c *gin.Context) {
-	data, err := s.parser.GetCategoryTrends()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, cache.CategoryTrends)
 }
 
 // HandleYearOverYearComparison returns spending comparison across years
 func (s *Service) HandleYearOverYearComparison(c *gin.Context) {
-	data, err := s.parser.GetYearOverYearComparison()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
 		return
 	}
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, cache.YearOverYear)
 }
 
 // HandleGetSettings returns the current application settings
@@ -166,6 +283,13 @@ func (s *Service) HandleUpdateSettings(c *gin.Context) {
 	// Update the parser's settings so it uses the new tiers
 	s.parser.UpdateSettings(&updatedSettings)
 
+	// Mark cache as stale so the next refresh will recompute with new settings
+	s.cacheMu.Lock()
+	if s.cache != nil {
+		s.cache.Stale = true
+	}
+	s.cacheMu.Unlock()
+
 	// Save to disk
 	if err := config.SaveSettings(&updatedSettings); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -173,4 +297,42 @@ func (s *Service) HandleUpdateSettings(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "settings updated successfully"})
+}
+
+// HandleCacheStatus returns cache metadata
+func (s *Service) HandleCacheStatus(c *gin.Context) {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+
+	if s.cache == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"hasCache":     false,
+			"inProgress":   s.cacheRefreshing,
+			"lastRefresh":  nil,
+			"stale":        false,
+			"needsRefresh": true,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"hasCache":    true,
+		"inProgress":  s.cacheRefreshing,
+		"lastRefresh": s.cache.LastRefresh,
+		"stale":       s.cache.Stale,
+	})
+}
+
+// HandleCacheRefresh triggers a rebuild of cached data
+func (s *Service) HandleCacheRefresh(c *gin.Context) {
+	if err := s.RebuildCache(); err != nil {
+		if err.Error() == "refresh already in progress" {
+			c.JSON(http.StatusAccepted, gin.H{"message": "refresh already in progress", "inProgress": true})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "cache rebuilt", "lastRefresh": time.Now()})
 }

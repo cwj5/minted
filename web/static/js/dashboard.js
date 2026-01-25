@@ -94,6 +94,58 @@ function getCategoryColor(category) {
     return adjustBrightness(tierInfo.color, brightnessFactor);
 }
 
+// Refresh status helper
+function setRefreshStatus(message) {
+    const el = document.getElementById('refreshStatus');
+    if (el) {
+        el.textContent = message || '';
+    }
+}
+
+// Manually refresh cached data and reload dashboard
+async function refreshDashboardData() {
+    const btn = document.getElementById('refreshButton');
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+        }
+        setRefreshStatus('Refreshing data...');
+
+        const resp = await fetch('/api/cache/refresh', { method: 'POST' });
+        // Even if 202 (already in progress), proceed to reload once request accepted
+        if (!resp.ok && resp.status !== 202) {
+            throw new Error(`Refresh failed: ${resp.status}`);
+        }
+
+        // Reload settings and all dashboard data after refresh
+        await loadSettings();
+        await Promise.all([
+            loadSummary(),
+            loadBudgetData(),
+            loadAccounts(),
+            loadTransactions(),
+            loadIncomeExpensesChart(),
+            loadCategorySpendingChart(),
+            loadNetWorthChart(),
+            loadCategoryTrendsChart(),
+            loadYearOverYearChart()
+        ]);
+
+        setRefreshStatus('Refresh complete');
+    } catch (err) {
+        console.error('Error refreshing dashboard:', err);
+        setRefreshStatus('Refresh failed');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Refresh';
+        }
+        // Clear status after a short delay
+        setTimeout(() => setRefreshStatus(''), 2000);
+    }
+}
+
 // Load summary data
 async function loadSummary() {
     try {
@@ -494,6 +546,11 @@ async function loadCategorySpendingChart() {
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
+    const refreshBtn = document.getElementById('refreshButton');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshDashboardData);
+    }
+
     loadSettings().then(() => {
         loadSummary();
         loadBudgetData();
