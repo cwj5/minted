@@ -54,6 +54,21 @@ type BudgetItem struct {
 	PercentBudget float64 `json:"percentBudget"`
 }
 
+// MonthBudget represents spend for a category in a given month
+type MonthBudget struct {
+	Month           string  `json:"month"`
+	Amount          float64 `json:"amount"`
+	PercentOfBudget float64 `json:"percentOfBudget"`
+	OverBudget      bool    `json:"overBudget"`
+}
+
+// BudgetHistoryItem holds historical spending against the average
+type BudgetHistoryItem struct {
+	Category string        `json:"category"`
+	Average  float64       `json:"average"`
+	Months   []MonthBudget `json:"months"`
+}
+
 // MonthlyMetrics represents financial metrics for a month
 type MonthlyMetrics struct {
 	Month       string  `json:"month"`
@@ -345,6 +360,84 @@ func removeOutliers(values []float64) []float64 {
 	}
 
 	return filtered
+}
+
+// GetBudgetHistory returns per-category spend by month with percent vs average
+func (p *Parser) GetBudgetHistory() ([]BudgetHistoryItem, error) {
+	monthlySpending, err := p.GetMonthlySpending()
+	if err != nil {
+		return nil, err
+	}
+
+	currentMonth := getCurrentYearMonth()
+
+	// Collect month list and limit to last 12
+	var months []string
+	for month := range monthlySpending {
+		months = append(months, month)
+	}
+	sort.Strings(months)
+	if len(months) > 12 {
+		months = months[len(months)-12:]
+	}
+
+	// Build category history excluding current month for averages
+	categoryHistory := make(map[string][]float64)
+	for month, categories := range monthlySpending {
+		if month == currentMonth {
+			continue
+		}
+		for category, amount := range categories {
+			categoryHistory[category] = append(categoryHistory[category], amount)
+		}
+	}
+
+	var history []BudgetHistoryItem
+
+	for category, amounts := range categoryHistory {
+		if len(amounts) < 2 {
+			// Need at least two months to establish a reasonable average
+			continue
+		}
+
+		var sum float64
+		for _, v := range amounts {
+			sum += v
+		}
+		avg := sum / float64(len(amounts))
+
+		var monthData []MonthBudget
+		for _, month := range months {
+			var amount float64
+			if categories, ok := monthlySpending[month]; ok {
+				amount = categories[category]
+			}
+
+			percent := 0.0
+			if avg > 0 {
+				percent = (amount / avg) * 100
+			}
+
+			monthData = append(monthData, MonthBudget{
+				Month:           month,
+				Amount:          math.Round(amount*100) / 100,
+				PercentOfBudget: math.Round(percent*100) / 100,
+				OverBudget:      amount > avg,
+			})
+		}
+
+		history = append(history, BudgetHistoryItem{
+			Category: category,
+			Average:  math.Round(avg*100) / 100,
+			Months:   monthData,
+		})
+	}
+
+	sort.Slice(history, func(i, j int) bool {
+		return history[i].Category < history[j].Category
+	})
+
+	return history, nil
 }
 
 // GetBudgetData calculates budget targets based on historical spending averages

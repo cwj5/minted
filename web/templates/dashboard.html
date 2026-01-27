@@ -6,6 +6,61 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ .title }}</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .budget-charts-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .budget-chart-card {
+            background: #f7f9fb;
+            border: 1px solid #e5e8ec;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .budget-chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .budget-chart-title {
+            font-weight: 700;
+            color: #2c3e50;
+        }
+
+        .budget-chart-meta {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+
+        .budget-chart-canvas {
+            width: 100%;
+            height: 200px;
+            min-height: 200px;
+            max-height: 200px;
+            display: block;
+        }
+
+        .budget-empty {
+            color: #7f8c8d;
+            font-size: 14px;
+            padding: 6px 0;
+        }
+
+        @media (max-width: 900px) {
+            .budget-chart-canvas {
+                height: 160px;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -42,11 +97,11 @@
                 </div>
             </section>
 
-            <!-- Budget & Spending Section -->
+            <!-- Budget History Section -->
             <section class="budget-section">
-                <h2>Budget & Spending</h2>
-                <div id="budget" class="budget-list">
-                    <p>Loading budget data...</p>
+                <h2>Budget History</h2>
+                <div id="budget-charts" class="budget-charts-grid">
+                    <p class="budget-empty">Loading budget history...</p>
                 </div>
             </section>
 

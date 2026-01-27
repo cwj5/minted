@@ -8,6 +8,7 @@ function formatCurrency(amount) {
 
 // Store settings globally for color mapping
 let appSettings = null;
+let budgetCharts = [];
 
 // Load settings and build category-to-color mapping
 async function loadSettings() {
@@ -19,6 +20,13 @@ async function loadSettings() {
         console.error('Error loading settings:', error);
         appSettings = null;
     }
+}
+
+// Convert hex to rgba string with fallback
+function rgbaFromHex(hex, alpha) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return `rgba(52,152,219,${alpha})`;
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
 // Convert hex color to RGB
@@ -122,7 +130,7 @@ async function refreshDashboardData() {
         await loadSettings();
         await Promise.all([
             loadSummary(),
-            loadBudgetData(),
+            loadBudgetHistory(),
             loadAccounts(),
             loadTransactions(),
             loadIncomeExpensesChart(),
@@ -184,74 +192,150 @@ async function loadAccounts() {
     }
 }
 
-// Get day of month percentage (how much of the month is complete)
-function getDayOfMonthPercent() {
-    const now = new Date();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return (now.getDate() / lastDay) * 100;
+// Destroy any existing budget charts before re-rendering
+function destroyBudgetCharts() {
+    budgetCharts.forEach(chart => chart.destroy());
+    budgetCharts = [];
 }
 
-// Load budget data
-async function loadBudgetData() {
+// Load budget history and render per-category line charts
+async function loadBudgetHistory() {
     try {
-        const response = await fetch('/api/budget');
-        const budgetItems = await response.json();
+        const response = await fetch('/api/budget/history');
+        const items = await response.json();
 
-        const container = document.getElementById('budget');
-        if (!budgetItems || budgetItems.length === 0) {
-            container.innerHTML = '<p>No budget data available (need at least 2 months of history)</p>';
+        const container = document.getElementById('budget-charts');
+        if (!container) return;
+
+        destroyBudgetCharts();
+
+        if (!items || items.length === 0) {
+            container.classList.remove('budget-charts-grid');
+            container.innerHTML = '<p class="budget-empty">No budget history available (need at least 2 months of history)</p>';
             return;
         }
 
-        const dayPercent = getDayOfMonthPercent();
+        container.classList.add('budget-charts-grid');
+        container.innerHTML = '';
 
-        container.innerHTML = budgetItems.map(item => {
-            // Determine color class based on percent budget
-            let statusClass = 'on-budget';
-            if (item.percentBudget > 100) {
-                statusClass = 'over-budget';
-            } else if (item.percentBudget > 80) {
-                statusClass = 'near-budget';
+        // Build months list from data
+        const monthsSet = new Set();
+        items.forEach(item => {
+            if (item.months) {
+                item.months.forEach(m => monthsSet.add(m.month));
+            }
+        });
+        const months = Array.from(monthsSet).sort();
+
+        // Limit to last 12 months just in case
+        const limitedMonths = months.slice(Math.max(0, months.length - 12));
+
+        // Render a compact line chart per category
+        items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'budget-chart-card';
+
+            const header = document.createElement('div');
+            header.className = 'budget-chart-header';
+            header.innerHTML = `
+                <div>
+                    <div class="budget-chart-title">${escapeHtml(item.category)}</div>
+                    <div class="budget-chart-meta">Avg ${formatCurrency(item.average || 0)}</div>
+                </div>
+            `;
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'budget-chart-canvas';
+            const canvasId = `budget-chart-${(item.category || 'cat').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
+            canvas.id = canvasId;
+            canvas.height = 200;
+            canvas.style.height = '200px';
+            canvas.style.width = '100%';
+
+            card.appendChild(header);
+            card.appendChild(canvas);
+            container.appendChild(card);
+
+            const monthMap = {};
+            if (item.months) {
+                item.months.forEach(m => { monthMap[m.month] = m; });
             }
 
-            // Determine status text
-            let statusText = 'On track';
-            if (item.percentBudget > 100) {
-                statusText = `Over by ${formatCurrency(item.variance)}`;
-            } else if (item.variance > 0) {
-                statusText = `Over by ${formatCurrency(item.variance)}`;
-            } else {
-                statusText = `Under by ${formatCurrency(-item.variance)}`;
-            }
+            const dataPoints = limitedMonths.map(month => {
+                const entry = monthMap[month];
+                return entry ? entry.amount : null;
+            });
 
-            return `
-            <div class="budget-item ${statusClass}">
-                <div class="budget-header">
-                    <div class="budget-category">${escapeHtml(item.category)}</div>
-                    <div class="budget-status">${statusText}</div>
-                </div>
-                <div class="budget-amounts">
-                    <div class="budget-row">
-                        <span class="label">Average:</span>
-                        <span class="amount">${formatCurrency(item.average)}</span>
-                    </div>
-                    <div class="budget-row">
-                        <span class="label">This Month:</span>
-                        <span class="amount">${formatCurrency(item.currentMonth)}</span>
-                    </div>
-                </div>
-                <div class="budget-progress-container">
-                    <div class="budget-progress-bar">
-                        <div class="budget-pace-line" style="left: ${dayPercent}%"></div>
-                        <div class="budget-progress-fill" style="width: ${Math.min(item.percentBudget, 100)}%"></div>
-                    </div>
-                    <div class="budget-percent">${item.percentBudget.toFixed(0)}%</div>
-                </div>
-            </div>
-        `}).join('');
+            const avgLine = limitedMonths.map(() => item.average || 0);
+
+            const ctx = canvas.getContext('2d');
+            const color = getCategoryColor(item.category || '');
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: limitedMonths,
+                    datasets: [
+                        {
+                            label: 'Actual',
+                            data: dataPoints,
+                            borderColor: color,
+                            backgroundColor: rgbaFromHex(color, 0.16),
+                            tension: 0.25,
+                            fill: true,
+                            pointRadius: 3,
+                            pointHoverRadius: 4
+                        },
+                        {
+                            label: 'Average',
+                            data: avgLine,
+                            borderColor: '#7f8c8d',
+                            borderWidth: 1,
+                            borderDash: [6, 4],
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: { autoSkip: true, maxTicksLimit: 6 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: (value) => formatCurrency(value)
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const month = ctx.label;
+                                    const entry = monthMap[month];
+                                    const pct = entry && entry.percentOfBudget ? ` (${entry.percentOfBudget.toFixed(0)}%)` : '';
+                                    return `${formatCurrency(ctx.parsed.y || 0)}${pct}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            budgetCharts.push(chart);
+        });
     } catch (error) {
-        console.error('Error loading budget data:', error);
-        document.getElementById('budget').innerHTML = '<p>Error loading budget data</p>';
+        console.error('Error loading budget history:', error);
+        const container = document.getElementById('budget-charts');
+        if (container) {
+            container.classList.remove('budget-charts-grid');
+            container.innerHTML = '<p class="budget-empty">Error loading budget history</p>';
+        }
     }
 }
 
@@ -553,7 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadSettings().then(() => {
         loadSummary();
-        loadBudgetData();
+        loadBudgetHistory();
         loadAccounts();
         loadTransactions();
         loadIncomeExpensesChart();

@@ -32,6 +32,7 @@ type CachedData struct {
 	Accounts         []hledger.Account
 	Transactions     []hledger.Transaction
 	Budget           []hledger.BudgetItem
+	BudgetHistory    []hledger.BudgetHistoryItem
 	MonthlyMetrics   []hledger.MonthlyMetrics
 	CategorySpending []hledger.CategorySpending
 	NetWorthOverTime []hledger.NetWorthPoint
@@ -99,6 +100,11 @@ func (s *Service) RebuildCache() error {
 		return err
 	}
 
+	budgetHistory, err := s.parser.GetBudgetHistory()
+	if err != nil {
+		return err
+	}
+
 	monthlyMetrics, err := s.parser.GetMonthlyMetrics()
 	if err != nil {
 		return err
@@ -128,6 +134,7 @@ func (s *Service) RebuildCache() error {
 		Accounts:         accounts,
 		Transactions:     transactions,
 		Budget:           budgetItems,
+		BudgetHistory:    budgetHistory,
 		MonthlyMetrics:   monthlyMetrics,
 		CategorySpending: categorySpending,
 		NetWorthOverTime: netWorth,
@@ -212,6 +219,16 @@ func (s *Service) HandleBudgetComparison(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, cache.Budget)
+}
+
+// HandleBudgetHistory returns historical budget vs actuals
+func (s *Service) HandleBudgetHistory(c *gin.Context) {
+	cache, ok := s.getCache()
+	if !ok {
+		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
+		return
+	}
+	c.JSON(http.StatusOK, cache.BudgetHistory)
 }
 
 // HandleMonthlyMetrics returns monthly income, expenses, and savings
