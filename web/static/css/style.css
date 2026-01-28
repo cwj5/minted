@@ -125,6 +125,14 @@ body {
     transition: background 0.3s ease;
 }
 
+.account-item.liability-account {
+    border-left-color: #e74c3c !important;
+}
+
+.account-item.liability-account .account-balance {
+    color: #e74c3c !important;
+}
+
 .account-item:hover {
     background: #d5dbdb;
 }

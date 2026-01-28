@@ -180,10 +180,43 @@ async function loadAccounts() {
             return;
         }
 
-        container.innerHTML = accounts.map(account => `
-            <div class="account-item">
-                <div class="account-name">${escapeHtml(account.aname)}</div>
-                <div class="account-balance">${formatCurrency(account.aebalance || 0)}</div>
+        // Filter and format accounts
+        const filteredAccounts = accounts
+            .filter(account => !account.aname.includes(':transfer'))
+            .map(account => {
+                let displayName = account.aname;
+                let isLiability = false;
+
+                // Check if it's a liability account
+                if (displayName.toLowerCase().startsWith('liabilities:')) {
+                    isLiability = true;
+                    displayName = displayName.replace(/^liabilities:/i, '');
+                } else {
+                    // Strip leading "assets:" prefix
+                    displayName = displayName.replace(/^assets:/i, '');
+                }
+
+                // Strip trailing ":current" suffix
+                displayName = displayName.replace(/:current$/i, '');
+
+                // For liabilities, flip the sign to show positive amounts
+                let displayBalance = account.aebalance || 0;
+                if (isLiability && displayBalance !== 0) {
+                    displayBalance = -displayBalance;
+                }
+
+                return {
+                    ...account,
+                    displayName: displayName,
+                    displayBalance: displayBalance,
+                    isLiability: isLiability
+                };
+            });
+
+        container.innerHTML = filteredAccounts.map(account => `
+            <div class="account-item ${account.isLiability ? 'liability-account' : ''}">
+                <div class="account-name">${escapeHtml(account.displayName)}</div>
+                <div class="account-balance">${formatCurrency(account.displayBalance)}</div>
             </div>
         `).join('');
     } catch (error) {
