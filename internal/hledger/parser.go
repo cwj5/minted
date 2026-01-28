@@ -57,6 +57,7 @@ type BudgetItem struct {
 // MonthBudget represents spend for a category in a given month
 type MonthBudget struct {
 	Month           string  `json:"month"`
+	Year            string  `json:"year"`
 	Amount          float64 `json:"amount"`
 	PercentOfBudget float64 `json:"percentOfBudget"`
 	OverBudget      bool    `json:"overBudget"`
@@ -64,9 +65,10 @@ type MonthBudget struct {
 
 // BudgetHistoryItem holds historical spending against the average
 type BudgetHistoryItem struct {
-	Category string        `json:"category"`
-	Average  float64       `json:"average"`
-	Months   []MonthBudget `json:"months"`
+	Category                  string        `json:"category"`
+	Average                   float64       `json:"average"`
+	AverageExcludingExtremes  float64       `json:"averageExcludingExtremes"`
+	Months                    []MonthBudget `json:"months"`
 }
 
 // MonthlyMetrics represents financial metrics for a month
@@ -371,15 +373,12 @@ func (p *Parser) GetBudgetHistory() ([]BudgetHistoryItem, error) {
 
 	currentMonth := getCurrentYearMonth()
 
-	// Collect month list and limit to last 12
-	var months []string
+	// Collect all months and extract unique years
+	var allMonths []string
 	for month := range monthlySpending {
-		months = append(months, month)
+		allMonths = append(allMonths, month)
 	}
-	sort.Strings(months)
-	if len(months) > 12 {
-		months = months[len(months)-12:]
-	}
+	sort.Strings(allMonths)
 
 	// Build category history excluding current month for averages
 	categoryHistory := make(map[string][]float64)
@@ -406,8 +405,24 @@ func (p *Parser) GetBudgetHistory() ([]BudgetHistoryItem, error) {
 		}
 		avg := sum / float64(len(amounts))
 
+		// Calculate average excluding extremes (values > 2x average)
+		var filteredAmounts []float64
+		for _, v := range amounts {
+			if v <= avg*2 {
+				filteredAmounts = append(filteredAmounts, v)
+			}
+		}
+		avgExcludingExtremes := avg
+		if len(filteredAmounts) > 0 {
+			var filteredSum float64
+			for _, v := range filteredAmounts {
+				filteredSum += v
+			}
+			avgExcludingExtremes = filteredSum / float64(len(filteredAmounts))
+		}
+
 		var monthData []MonthBudget
-		for _, month := range months {
+		for _, month := range allMonths {
 			var amount float64
 			if categories, ok := monthlySpending[month]; ok {
 				amount = categories[category]
@@ -418,8 +433,15 @@ func (p *Parser) GetBudgetHistory() ([]BudgetHistoryItem, error) {
 				percent = (amount / avg) * 100
 			}
 
+			// Extract year from month (format: YYYY-MM)
+			year := ""
+			if len(month) >= 4 {
+				year = month[:4]
+			}
+
 			monthData = append(monthData, MonthBudget{
 				Month:           month,
+				Year:            year,
 				Amount:          math.Round(amount*100) / 100,
 				PercentOfBudget: math.Round(percent*100) / 100,
 				OverBudget:      amount > avg,
@@ -427,9 +449,10 @@ func (p *Parser) GetBudgetHistory() ([]BudgetHistoryItem, error) {
 		}
 
 		history = append(history, BudgetHistoryItem{
-			Category: category,
-			Average:  math.Round(avg*100) / 100,
-			Months:   monthData,
+			Category:                 category,
+			Average:                  math.Round(avg*100) / 100,
+			AverageExcludingExtremes: math.Round(avgExcludingExtremes*100) / 100,
+			Months:                   monthData,
 		})
 	}
 

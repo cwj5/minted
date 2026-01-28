@@ -198,7 +198,7 @@ function destroyBudgetCharts() {
     budgetCharts = [];
 }
 
-// Load budget history and render per-category line charts
+// Load budget history and render per-category line charts with multi-year support
 async function loadBudgetHistory() {
     try {
         const response = await fetch('/api/budget/history');
@@ -218,29 +218,18 @@ async function loadBudgetHistory() {
         container.classList.add('budget-charts-grid');
         container.innerHTML = '';
 
-        // Build months list from data
-        const monthsSet = new Set();
-        items.forEach(item => {
-            if (item.months) {
-                item.months.forEach(m => monthsSet.add(m.month));
-            }
-        });
-        const months = Array.from(monthsSet).sort();
-
-        // Limit to last 12 months just in case
-        const limitedMonths = months.slice(Math.max(0, months.length - 12));
-
-        // Render a compact line chart per category
+        // Render a compact line chart per category with multi-year support
         items.forEach(item => {
             const card = document.createElement('div');
             card.className = 'budget-chart-card';
 
             const header = document.createElement('div');
             header.className = 'budget-chart-header';
+            const avgExcl = item.averageExcludingExtremes || item.average || 0;
             header.innerHTML = `
                 <div>
                     <div class="budget-chart-title">${escapeHtml(item.category)}</div>
-                    <div class="budget-chart-meta">Avg ${formatCurrency(item.average || 0)}</div>
+                    <div class="budget-chart-meta">Avg ${formatCurrency(item.average || 0)} | Excl. extremes ${formatCurrency(avgExcl)}</div>
                 </div>
             `;
 
@@ -256,70 +245,140 @@ async function loadBudgetHistory() {
             card.appendChild(canvas);
             container.appendChild(card);
 
-            const monthMap = {};
+            // Group months by year
+            const yearGroups = {};
             if (item.months) {
-                item.months.forEach(m => { monthMap[m.month] = m; });
+                item.months.forEach(m => {
+                    const year = m.year || 'Unknown';
+                    if (!yearGroups[year]) {
+                        yearGroups[year] = [];
+                    }
+                    yearGroups[year].push(m);
+                });
             }
 
-            const dataPoints = limitedMonths.map(month => {
-                const entry = monthMap[month];
-                return entry ? entry.amount : null;
+            // Get all unique month names (01-12) for x-axis labels
+            const monthNumbers = new Set();
+            if (item.months) {
+                item.months.forEach(m => {
+                    // Extract month number from YYYY-MM format
+                    if (m.month && m.month.length >= 7) {
+                        monthNumbers.add(m.month.substring(5, 7));
+                    }
+                });
+            }
+            const monthLabels = Array.from(monthNumbers).sort();
+
+            // Create dataset for each year
+            const datasets = [];
+            const years = Object.keys(yearGroups).sort();
+
+            // Color palette for different years
+            const yearColors = [
+                '#3498db', // Blue
+                '#e74c3c', // Red
+                '#2ecc71', // Green
+                '#f39c12', // Orange
+                '#9b59b6', // Purple
+                '#1abc9c', // Turquoise
+                '#34495e', // Dark gray
+            ];
+
+            years.forEach((year, index) => {
+                const yearData = yearGroups[year];
+                const monthMap = {};
+                yearData.forEach(m => {
+                    if (m.month && m.month.length >= 7) {
+                        const monthNum = m.month.substring(5, 7);
+                        monthMap[monthNum] = m;
+                    }
+                });
+
+                const dataPoints = monthLabels.map(monthNum => {
+                    const entry = monthMap[monthNum];
+                    return entry ? entry.amount : null;
+                });
+
+                const color = yearColors[index % yearColors.length];
+                datasets.push({
+                    label: year,
+                    data: dataPoints,
+                    borderColor: color,
+                    backgroundColor: rgbaFromHex(color, 0.1),
+                    tension: 0.25,
+                    fill: false,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    spanGaps: true
+                });
             });
 
-            const avgLine = limitedMonths.map(() => item.average || 0);
+            // Add average lines
+            datasets.push({
+                label: 'Average',
+                data: monthLabels.map(() => item.average || 0),
+                borderColor: '#7f8c8d',
+                borderWidth: 2,
+                borderDash: [6, 4],
+                pointRadius: 0,
+                fill: false,
+                tension: 0
+            });
+
+            datasets.push({
+                label: 'Avg (excl. extremes)',
+                data: monthLabels.map(() => avgExcl),
+                borderColor: '#95a5a6',
+                borderWidth: 1.5,
+                borderDash: [3, 3],
+                pointRadius: 0,
+                fill: false,
+                tension: 0
+            });
+
+            // Convert month numbers to readable labels (Jan, Feb, etc.)
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const xLabels = monthLabels.map(m => monthNames[parseInt(m) - 1] || m);
+
+            // Cap y-axis at 2x the average to avoid extreme outliers
+            const yAxisMax = (item.average || 0) * 2;
 
             const ctx = canvas.getContext('2d');
-            const color = getCategoryColor(item.category || '');
             const chart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: limitedMonths,
-                    datasets: [
-                        {
-                            label: 'Actual',
-                            data: dataPoints,
-                            borderColor: color,
-                            backgroundColor: rgbaFromHex(color, 0.16),
-                            tension: 0.25,
-                            fill: true,
-                            pointRadius: 3,
-                            pointHoverRadius: 4
-                        },
-                        {
-                            label: 'Average',
-                            data: avgLine,
-                            borderColor: '#7f8c8d',
-                            borderWidth: 1,
-                            borderDash: [6, 4],
-                            pointRadius: 0,
-                            fill: false,
-                            tension: 0
-                        }
-                    ]
+                    labels: xLabels,
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
                         x: {
-                            ticks: { autoSkip: true, maxTicksLimit: 6 }
+                            ticks: { autoSkip: true, maxTicksLimit: 12 }
                         },
                         y: {
                             beginAtZero: true,
+                            max: yAxisMax > 0 ? yAxisMax : undefined,
                             ticks: {
                                 callback: (value) => formatCurrency(value)
                             }
                         }
                     },
                     plugins: {
-                        legend: { display: false },
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 10,
+                                font: { size: 11 }
+                            }
+                        },
                         tooltip: {
                             callbacks: {
                                 label: (ctx) => {
-                                    const month = ctx.label;
-                                    const entry = monthMap[month];
-                                    const pct = entry && entry.percentOfBudget ? ` (${entry.percentOfBudget.toFixed(0)}%)` : '';
-                                    return `${formatCurrency(ctx.parsed.y || 0)}${pct}`;
+                                    return `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y || 0)}`;
                                 }
                             }
                         }
