@@ -202,6 +202,132 @@ body {
     color: var(--secondary-color);
 }
 
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e5e8ec;
+    flex-wrap: wrap;
+}
+
+.pagination-btn {
+    padding: 10px 20px;
+    border: 1px solid #3498db;
+    background: linear-gradient(to bottom, #3498db, #2980b9);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(52, 152, 219, 0.2);
+    min-width: 100px;
+}
+
+.pagination-btn-icon {
+    min-width: 44px;
+    padding: 10px 14px;
+    font-size: 16px;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: linear-gradient(to bottom, #2980b9, #21618c);
+    border-color: #2980b9;
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+    transform: translateY(-1px);
+}
+
+.pagination-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(52, 152, 219, 0.2);
+}
+
+.pagination-btn:disabled {
+    background: linear-gradient(to bottom, #bdc3c7, #95a5a6);
+    border-color: #95a5a6;
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none;
+}
+
+.page-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
+.page-label {
+    font-size: 14px;
+    color: #555;
+    font-weight: 500;
+}
+
+.page-input {
+    width: 60px;
+    padding: 6px 8px;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: center;
+    font-weight: 600;
+    color: #2c3e50;
+    transition: border-color 0.2s;
+}
+
+.page-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.page-input::-webkit-inner-spin-button,
+.page-input::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+.page-total {
+    font-size: 14px;
+    color: #555;
+}
+
+.page-total span {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.page-info {
+    font-size: 13px;
+    color: #7f8c8d;
+    font-weight: 500;
+    padding: 4px 8px;
+}
+
+@media (max-width: 768px) {
+    .pagination {
+        gap: 8px;
+        padding: 16px;
+    }
+
+    .pagination-btn {
+        padding: 8px 14px;
+        min-width: 80px;
+        font-size: 13px;
+    }
+
+    .page-input {
+        width: 50px;
+    }
+}
+
 /* Budget Section */
 .budget-list {
     display: grid;

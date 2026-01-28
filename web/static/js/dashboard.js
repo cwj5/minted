@@ -411,81 +411,167 @@ function getAccount(accountName) {
 }
 
 // Load transactions
+// Pagination state
+let allTransactions = [];
+let currentPage = 1;
+const transactionsPerPage = 20;
+
 async function loadTransactions() {
     try {
         const response = await fetch('/api/transactions');
-        const transactions = await response.json();
-
-        const container = document.getElementById('transactions');
-        if (!transactions || transactions.length === 0) {
-            container.innerHTML = '<p>No transactions found</p>';
-            return;
-        }
-
-        let html = `
-            <table class="transactions-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Description</th>
-                        <th>Account</th>
-                        <th>Category</th>
-                        <th class="amount-col">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        html += transactions.map(tx => {
-            // Extract amount from the first posting
-            let amount = 0;
-            if (tx.tpostings && tx.tpostings.length > 0 && tx.tpostings[0].pamount && tx.tpostings[0].pamount.length > 0) {
-                const quantity = tx.tpostings[0].pamount[0].aquantity;
-                amount = quantity.decimalMantissa / Math.pow(10, quantity.decimalPlaces);
-            }
-
-            // Find the asset/liability account and the income/expense category
-            let account = '';
-            let category = '';
-
-            if (tx.tpostings) {
-                // Find first Assets or Liabilities posting
-                const assetLiability = tx.tpostings.find(p =>
-                    p.paccount.startsWith('assets:') || p.paccount.startsWith('liabilities:')
-                );
-                if (assetLiability) {
-                    account = getAccount(assetLiability.paccount);
-                }
-
-                // Find first Expenses or Income posting
-                const expenseIncome = tx.tpostings.find(p =>
-                    p.paccount.startsWith('expenses:') || p.paccount.startsWith('income:')
-                );
-                if (expenseIncome) {
-                    category = getAccount(expenseIncome.paccount);
-                }
-            }
-
-            return `
-                    <tr>
-                        <td class="date-col">${formatDate(tx.tdate)}</td>
-                        <td class="desc-col">${escapeHtml(tx.tdescription)}</td>
-                        <td class="account-col">${escapeHtml(account)}</td>
-                        <td class="category-col">${escapeHtml(category)}</td>
-                        <td class="amount-col">${formatCurrency(amount)}</td>
-                    </tr>
-            `;
-        }).join('');
-
-        html += `
-                </tbody>
-            </table>
-        `;
-
-        container.innerHTML = html;
+        allTransactions = await response.json();
+        currentPage = 1;
+        renderTransactionsPage();
     } catch (error) {
         console.error('Error loading transactions:', error);
         document.getElementById('transactions').innerHTML = '<p>Error loading transactions</p>';
+    }
+}
+
+function renderTransactionsPage() {
+    const container = document.getElementById('transactions');
+    const pagination = document.getElementById('transactions-pagination');
+
+    if (!allTransactions || allTransactions.length === 0) {
+        container.innerHTML = '<p>No transactions found</p>';
+        if (pagination) pagination.style.display = 'none';
+        return;
+    }
+
+    const totalPages = Math.ceil(allTransactions.length / transactionsPerPage);
+    const startIdx = (currentPage - 1) * transactionsPerPage;
+    const endIdx = Math.min(startIdx + transactionsPerPage, allTransactions.length);
+    const pageTransactions = allTransactions.slice(startIdx, endIdx);
+
+    let html = `
+        <table class="transactions-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Account</th>
+                    <th>Category</th>
+                    <th class="amount-col">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    html += pageTransactions.map(tx => {
+        // Extract amount from the first posting
+        let amount = 0;
+        if (tx.tpostings && tx.tpostings.length > 0 && tx.tpostings[0].pamount && tx.tpostings[0].pamount.length > 0) {
+            const quantity = tx.tpostings[0].pamount[0].aquantity;
+            amount = quantity.decimalMantissa / Math.pow(10, quantity.decimalPlaces);
+        }
+
+        // Find the asset/liability account and the income/expense category
+        let account = '';
+        let category = '';
+
+        if (tx.tpostings) {
+            // Find first Assets or Liabilities posting
+            const assetLiability = tx.tpostings.find(p =>
+                p.paccount.startsWith('assets:') || p.paccount.startsWith('liabilities:')
+            );
+            if (assetLiability) {
+                account = getAccount(assetLiability.paccount);
+            }
+
+            // Find first Expenses or Income posting
+            const expenseIncome = tx.tpostings.find(p =>
+                p.paccount.startsWith('expenses:') || p.paccount.startsWith('income:')
+            );
+            if (expenseIncome) {
+                category = getAccount(expenseIncome.paccount);
+            }
+        }
+
+        return `
+                <tr>
+                    <td class="date-col">${formatDate(tx.tdate)}</td>
+                    <td class="desc-col">${escapeHtml(tx.tdescription)}</td>
+                    <td class="account-col">${escapeHtml(account)}</td>
+                    <td class="category-col">${escapeHtml(category)}</td>
+                    <td class="amount-col">${formatCurrency(amount)}</td>
+                </tr>
+        `;
+    }).join('');
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+
+    // Update pagination controls
+    if (pagination) {
+        if (totalPages > 1) {
+            pagination.style.display = 'flex';
+            const firstBtn = document.getElementById('first-page');
+            const prevBtn = document.getElementById('prev-page');
+            const nextBtn = document.getElementById('next-page');
+            const lastBtn = document.getElementById('last-page');
+            const pageInfo = document.getElementById('page-info');
+            const pageInput = document.getElementById('page-input');
+            const totalPagesSpan = document.getElementById('total-pages');
+
+            if (firstBtn) firstBtn.disabled = currentPage === 1;
+            if (prevBtn) prevBtn.disabled = currentPage === 1;
+            if (nextBtn) nextBtn.disabled = currentPage === totalPages;
+            if (lastBtn) lastBtn.disabled = currentPage === totalPages;
+
+            if (pageInput) {
+                pageInput.value = currentPage;
+                pageInput.max = totalPages;
+            }
+
+            if (totalPagesSpan) {
+                totalPagesSpan.textContent = totalPages;
+            }
+
+            if (pageInfo) {
+                pageInfo.textContent = `(${allTransactions.length} transactions)`;
+            }
+        } else {
+            pagination.style.display = 'none';
+        }
+    }
+}
+
+function goToFirstPage() {
+    currentPage = 1;
+    renderTransactionsPage();
+}
+
+function goToPreviousPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        renderTransactionsPage();
+    }
+}
+
+function goToNextPage() {
+    const totalPages = Math.ceil(allTransactions.length / transactionsPerPage);
+    if (currentPage < totalPages) {
+        currentPage++;
+        renderTransactionsPage();
+    }
+}
+
+function goToLastPage() {
+    const totalPages = Math.ceil(allTransactions.length / transactionsPerPage);
+    currentPage = totalPages;
+    renderTransactionsPage();
+}
+
+function goToPage(pageNum) {
+    const totalPages = Math.ceil(allTransactions.length / transactionsPerPage);
+    const page = parseInt(pageNum);
+    if (page >= 1 && page <= totalPages) {
+        currentPage = page;
+        renderTransactionsPage();
     }
 }
 
@@ -692,6 +778,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const refreshBtn = document.getElementById('refreshButton');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', refreshDashboardData);
+    }
+
+    // Add pagination event listeners
+    const firstBtn = document.getElementById('first-page');
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const lastBtn = document.getElementById('last-page');
+    const pageInput = document.getElementById('page-input');
+
+    if (firstBtn) firstBtn.addEventListener('click', goToFirstPage);
+    if (prevBtn) prevBtn.addEventListener('click', goToPreviousPage);
+    if (nextBtn) nextBtn.addEventListener('click', goToNextPage);
+    if (lastBtn) lastBtn.addEventListener('click', goToLastPage);
+
+    if (pageInput) {
+        pageInput.addEventListener('change', (e) => goToPage(e.target.value));
+        pageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                goToPage(e.target.value);
+            }
+        });
     }
 
     loadSettings().then(() => {

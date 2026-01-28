@@ -146,6 +146,18 @@
                 <div id="transactions" class="transactions-list">
                     <p>Loading transactions...</p>
                 </div>
+                <div id="transactions-pagination" class="pagination" style="display: none;">
+                    <button id="first-page" class="pagination-btn pagination-btn-icon" title="First page">⟨⟨</button>
+                    <button id="prev-page" class="pagination-btn">← Previous</button>
+                    <div class="page-selector">
+                        <span class="page-label">Page</span>
+                        <input type="number" id="page-input" class="page-input" min="1" value="1">
+                        <span class="page-total">of <span id="total-pages">1</span></span>
+                    </div>
+                    <span id="page-info" class="page-info"></span>
+                    <button id="next-page" class="pagination-btn">Next →</button>
+                    <button id="last-page" class="pagination-btn pagination-btn-icon" title="Last page">⟩⟩</button>
+                </div>
             </section>
         </main>
     </div>
@@ -154,7 +166,7 @@
     <script src="https://cdn.jsdelivr.net/npm/date-fns@3.0.0/index.min.js"></script>
     <script
         src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="/static/js/dashboard.js?v=4"></script>
+    <script src="/static/js/dashboard.js?v=6"></script>
 </body>
 
 </html>

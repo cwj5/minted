@@ -65,10 +65,10 @@ type MonthBudget struct {
 
 // BudgetHistoryItem holds historical spending against the average
 type BudgetHistoryItem struct {
-	Category                  string        `json:"category"`
-	Average                   float64       `json:"average"`
-	AverageExcludingExtremes  float64       `json:"averageExcludingExtremes"`
-	Months                    []MonthBudget `json:"months"`
+	Category                 string        `json:"category"`
+	Average                  float64       `json:"average"`
+	AverageExcludingExtremes float64       `json:"averageExcludingExtremes"`
+	Months                   []MonthBudget `json:"months"`
 }
 
 // MonthlyMetrics represents financial metrics for a month
