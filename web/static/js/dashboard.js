@@ -626,6 +626,172 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Load and render savings rate chart
+async function loadSavingsRateChart() {
+    try {
+        const response = await fetch('/api/monthly-metrics');
+        const metrics = await response.json();
+
+        if (!metrics || metrics.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('savings-rate-chart');
+        if (!ctx) return;
+
+        // Calculate savings amounts and averages
+        const savingsAmounts = metrics.map(m => m.income - m.expenses);
+
+        // Calculate full average
+        const sum = savingsAmounts.reduce((a, b) => a + b, 0);
+        const average = sum / savingsAmounts.length;
+
+        // Calculate average excluding extremes (> 2x average)
+        const filteredAmounts = savingsAmounts.filter(v => v <= average * 2);
+        const avgExcludingExtremes = filteredAmounts.length > 0
+            ? filteredAmounts.reduce((a, b) => a + b, 0) / filteredAmounts.length
+            : average;
+
+        // Group by year
+        const yearGroups = {};
+        metrics.forEach(m => {
+            const year = m.month.substring(0, 4);
+            if (!yearGroups[year]) {
+                yearGroups[year] = [];
+            }
+            yearGroups[year].push(m);
+        });
+
+        // Get unique month numbers
+        const monthNumbers = new Set();
+        metrics.forEach(m => {
+            if (m.month && m.month.length >= 7) {
+                monthNumbers.add(m.month.substring(5, 7));
+            }
+        });
+        const monthLabels = Array.from(monthNumbers).sort();
+
+        // Color palette for different years
+        const yearColors = [
+            '#3498db', // Blue
+            '#e74c3c', // Red
+            '#2ecc71', // Green
+            '#f39c12', // Orange
+            '#9b59b6', // Purple
+            '#1abc9c', // Turquoise
+            '#34495e', // Dark gray
+        ];
+
+        const datasets = [];
+        const years = Object.keys(yearGroups).sort();
+
+        years.forEach((year, index) => {
+            const yearData = yearGroups[year];
+            const monthMap = {};
+            yearData.forEach(m => {
+                if (m.month && m.month.length >= 7) {
+                    const monthNum = m.month.substring(5, 7);
+                    monthMap[monthNum] = m;
+                }
+            });
+
+            const dataPoints = monthLabels.map(monthNum => {
+                const entry = monthMap[monthNum];
+                return entry ? (entry.income - entry.expenses) : null;
+            });
+
+            const color = yearColors[index % yearColors.length];
+            datasets.push({
+                label: year,
+                data: dataPoints,
+                borderColor: color,
+                backgroundColor: rgbaFromHex(color, 0.1),
+                tension: 0.25,
+                fill: false,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                spanGaps: true
+            });
+        });
+
+        // Add average lines
+        datasets.push({
+            label: 'Average',
+            data: monthLabels.map(() => average),
+            borderColor: '#7f8c8d',
+            borderWidth: 2,
+            borderDash: [6, 4],
+            pointRadius: 0,
+            fill: false,
+            tension: 0
+        });
+
+        datasets.push({
+            label: 'Avg (excl. extremes)',
+            data: monthLabels.map(() => avgExcludingExtremes),
+            borderColor: '#95a5a6',
+            borderWidth: 1.5,
+            borderDash: [3, 3],
+            pointRadius: 0,
+            fill: false,
+            tension: 0
+        });
+
+        // Convert month numbers to readable labels
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const xLabels = monthLabels.map(m => monthNames[parseInt(m) - 1] || m);
+
+        // Update the meta information
+        const metaEl = document.getElementById('savings-chart-meta');
+        if (metaEl) {
+            metaEl.innerHTML = `Avg ${formatCurrency(average)} | Excl. extremes ${formatCurrency(avgExcludingExtremes)}`;
+        }
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: xLabels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        ticks: { autoSkip: true, maxTicksLimit: 12 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => formatCurrency(value)
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 10,
+                            font: { size: 11 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                return `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y || 0)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading savings rate chart:', error);
+    }
+}
+
 // Load and render income vs expenses chart
 async function loadIncomeExpensesChart() {
     try {
@@ -837,6 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings().then(() => {
         loadSummary();
         loadBudgetHistory();
+        loadSavingsRateChart();
         loadAccounts();
         loadTransactions();
         loadIncomeExpensesChart();
