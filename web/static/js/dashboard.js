@@ -9,6 +9,13 @@ function formatCurrency(amount) {
 // Store settings globally for color mapping
 let appSettings = null;
 let budgetCharts = [];
+let incomeBreakdownChart = null;
+let categorySpendingChart = null;
+let incomeExpensesChart = null;
+let netWorthChart = null;
+let categoryTrendsChart = null;
+let yearOverYearChart = null;
+let savingsRateChart = null;
 
 // Load settings and build category-to-color mapping
 async function loadSettings() {
@@ -131,10 +138,12 @@ async function refreshDashboardData() {
         await Promise.all([
             loadSummary(),
             loadBudgetHistory(),
+            loadIncomeCategories(),
             loadAccounts(),
             loadTransactions(),
             loadIncomeExpensesChart(),
             loadCategorySpendingChart(),
+            loadIncomeBreakdownChart(),
             loadNetWorthChart(),
             loadCategoryTrendsChart(),
             loadYearOverYearChart()
@@ -435,6 +444,55 @@ async function loadBudgetHistory() {
         if (container) {
             container.classList.remove('budget-charts-grid');
             container.innerHTML = '<p class="budget-empty">Error loading budget history</p>';
+        }
+    }
+}
+
+// Load income categories and render as a single clickable 'All Income' card
+async function loadIncomeCategories() {
+    try {
+        const response = await fetch('/api/income-breakdown');
+        const income = await response.json();
+
+        const container = document.getElementById('income-categories');
+        if (!container) return;
+
+        if (!income || income.length === 0) {
+            container.classList.remove('budget-charts-grid');
+            container.innerHTML = '<p class="budget-empty">No income data available</p>';
+            return;
+        }
+
+        container.classList.add('budget-charts-grid');
+        container.innerHTML = '';
+
+        // Calculate total income across all categories
+        const totalIncome = income.reduce((sum, item) => sum + item.amount, 0);
+        const categoryCount = income.length;
+
+        // Render a single 'All Income' card
+        const card = document.createElement('div');
+        card.className = 'budget-chart-card';
+        card.style.cursor = 'pointer';
+        card.onclick = () => navigateToDetail('income-all', 'all');
+
+        const header = document.createElement('div');
+        header.className = 'budget-chart-header';
+        header.innerHTML = `
+            <div>
+                <div class="budget-chart-title">All Income</div>
+                <div class="budget-chart-meta">${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'} | Total: ${formatCurrency(totalIncome)}</div>
+            </div>
+        `;
+
+        card.appendChild(header);
+        container.appendChild(card);
+    } catch (error) {
+        console.error('Error loading income categories:', error);
+        const container = document.getElementById('income-categories');
+        if (container) {
+            container.classList.remove('budget-charts-grid');
+            container.innerHTML = '<p class="budget-empty">Error loading income categories</p>';
         }
     }
 }
@@ -880,6 +938,25 @@ async function loadIncomeExpensesChart() {
                             }
                         }
                     }
+                },
+                onClick: async (event, elements) => {
+                    if (elements.length > 0) {
+                        const datasetIndex = elements[0].datasetIndex;
+                        // datasetIndex 1 is the Income line
+                        if (datasetIndex === 1) {
+                            // Fetch income breakdown to find main income category
+                            try {
+                                const response = await fetch('/api/income-breakdown');
+                                const breakdown = await response.json();
+                                if (breakdown && breakdown.length > 0) {
+                                    // Navigate to the first/largest income category
+                                    navigateToIncomeDetail(breakdown[0].category);
+                                }
+                            } catch (error) {
+                                console.error('Error fetching income breakdown:', error);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -1025,11 +1102,13 @@ document.addEventListener('DOMContentLoaded', () => {
         loadSettings().then(() => {
             loadSummary();
             loadBudgetHistory();
+            loadIncomeCategories();
             loadSavingsRateChart();
             loadAccounts();
             loadTransactions();
             loadIncomeExpensesChart();
             loadCategorySpendingChart();
+            loadIncomeBreakdownChart();
             loadNetWorthChart();
             loadCategoryTrendsChart();
             loadYearOverYearChart();
@@ -1041,6 +1120,75 @@ document.addEventListener('DOMContentLoaded', () => {
 function parseMonthToDate(monthStr) {
     const [year, month] = monthStr.split('-');
     return new Date(year, parseInt(month) - 1, 1);
+}
+
+// Load and render income breakdown chart
+async function loadIncomeBreakdownChart() {
+    try {
+        // Destroy previous chart if it exists
+        if (incomeBreakdownChart) {
+            incomeBreakdownChart.destroy();
+            incomeBreakdownChart = null;
+        }
+
+        const response = await fetch('/api/income-breakdown');
+        const income = await response.json();
+
+        if (!income || income.length === 0) {
+            return;
+        }
+
+        const ctx = document.getElementById('incomeBreakdownChart');
+        if (!ctx) return;
+
+        const labels = income.map(item => item.category);
+        const data = income.map(item => item.amount);
+
+        // Generate distinct colors for income categories (shades of green)
+        const colors = labels.map((_, index) => {
+            const hue = 140 + (index * 20) % 60; // Green hues
+            const lightness = 45 + (index * 5) % 20;
+            return `hsl(${hue}, 60%, ${lightness}%)`;
+        });
+
+        incomeBreakdownChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const category = labels[index];
+                        navigateToIncomeDetail(category);
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                return '$' + context.parsed.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading income breakdown chart:', error);
+    }
 }
 
 // Load and render net worth over time chart
@@ -1294,6 +1442,11 @@ function navigateToDetail(type, name) {
     window.location.href = '/?' + params.toString();
 }
 
+// Navigate to income detail page
+function navigateToIncomeDetail(incomeName) {
+    navigateToDetail('income', incomeName);
+}
+
 // Load detail page based on URL parameters
 async function loadDetailPage() {
     await loadSettings();
@@ -1302,6 +1455,8 @@ async function loadDetailPage() {
     const category = urlParams.get('category');
     const tier = urlParams.get('tier');
     const account = urlParams.get('account');
+    const income = urlParams.get('income');
+    const incomeAll = urlParams.get('income-all');
 
     if (category) {
         loadCategoryDetail(category);
@@ -1309,6 +1464,10 @@ async function loadDetailPage() {
         loadTierDetail(tier);
     } else if (account) {
         loadAccountDetail(account);
+    } else if (income) {
+        loadIncomeDetail(income);
+    } else if (incomeAll) {
+        loadAllIncomeDetail();
     } else {
         document.getElementById('detail-title').textContent = 'Invalid Detail View';
         document.getElementById('breadcrumb-type').textContent = 'Error';
@@ -1370,6 +1529,8 @@ function renderDetailTransactions() {
     const filterCategory = urlParams.get('category');
     const filterTier = urlParams.get('tier');
     const filterAccount = urlParams.get('account');
+    const filterIncome = urlParams.get('income');
+    const filterIncomeAll = urlParams.get('income-all');
 
     const totalPages = Math.ceil(detailTransactions.length / detailItemsPerPage);
     const startIndex = (detailCurrentPage - 1) * detailItemsPerPage;
@@ -1411,6 +1572,19 @@ function renderDetailTransactions() {
             } else if (filterAccount) {
                 // Show the posting for this account
                 if (posting.paccount === filterAccount) {
+                    shouldShow = true;
+                }
+            } else if (filterIncome) {
+                // Show only income postings for this income category
+                if (posting.paccount.startsWith('income:')) {
+                    const parts = posting.paccount.split(':');
+                    if (parts[1] === filterIncome) {
+                        shouldShow = true;
+                    }
+                }
+            } else if (filterIncomeAll) {
+                // Show all income postings
+                if (posting.paccount.startsWith('income:')) {
                     shouldShow = true;
                 }
             }
@@ -1553,6 +1727,272 @@ async function loadAccountDetail(account) {
         }
     } catch (error) {
         console.error('Error loading account detail:', error);
+    }
+}
+
+// Load income detail
+async function loadIncomeDetail(incomeName) {
+    try {
+        const response = await fetch(`/api/detail/income?income=${encodeURIComponent(incomeName)}`);
+        const data = await response.json();
+
+        // Update page title and breadcrumb
+        document.getElementById('detail-title').textContent = incomeName;
+        document.getElementById('breadcrumb-type').textContent = 'Income';
+        document.getElementById('breadcrumb-name').textContent = incomeName;
+        document.getElementById('transactions-title').textContent = `${incomeName} Transactions`;
+
+        // Store transactions
+        detailTransactions = data.transactions || [];
+        renderDetailTransactions();
+
+        // Render breakdown chart
+        if (data.breakdown && data.breakdown.length > 0) {
+            // Transform breakdown data to match renderBreakdownChart format
+            const transformedBreakdown = data.breakdown.map(item => ({
+                name: item.name,
+                amount: item.amount
+            }));
+            renderBreakdownChart(transformedBreakdown, 'Income Breakdown');
+        } else {
+            document.getElementById('breakdown-section').style.display = 'none';
+        }
+
+        // Hide budget history for income (income doesn't have budgets)
+        document.getElementById('budget-history-section').style.display = 'none';
+    } catch (error) {
+        console.error('Error loading income detail:', error);
+    }
+}
+
+// Load all income detail (aggregate view like tiers)
+async function loadAllIncomeDetail() {
+    try {
+        const response = await fetch('/api/income-breakdown');
+        const breakdown = await response.json();
+
+        // Update page title and breadcrumb
+        document.getElementById('detail-title').textContent = 'All Income';
+        document.getElementById('breadcrumb-type').textContent = 'Income';
+        document.getElementById('breadcrumb-name').textContent = 'All';
+        document.getElementById('transactions-title').textContent = 'All Income Transactions';
+
+        // Fetch all income transactions
+        const txResponse = await fetch('/api/transactions');
+        const allTransactions = await txResponse.json();
+
+        // Filter for income transactions
+        const incomeTransactions = allTransactions.filter(tx =>
+            tx.tpostings.some(p => p.paccount.startsWith('income:'))
+        );
+
+        detailTransactions = incomeTransactions;
+        renderDetailTransactions();
+
+        // Render breakdown chart by income category
+        if (breakdown && breakdown.length > 0) {
+            // Transform breakdown data to match renderBreakdownChart format
+            const transformedBreakdown = breakdown.map(item => ({
+                name: item.category,
+                amount: item.amount
+            }));
+            renderBreakdownChart(transformedBreakdown, 'Income by Category');
+        } else {
+            document.getElementById('breakdown-section').style.display = 'none';
+        }
+
+        // Hide budget history for income
+        document.getElementById('budget-history-section').style.display = 'none';
+
+        // Show income history section
+        document.getElementById('income-history-section').style.display = 'block';
+
+        // Load and render income history charts
+        loadIncomeHistoryCharts();
+    } catch (error) {
+        console.error('Error loading all income detail:', error);
+    }
+}
+
+// Load and render income history charts (similar to budget history)
+async function loadIncomeHistoryCharts() {
+    try {
+        const response = await fetch('/api/income-history');
+        const items = await response.json();
+
+        const container = document.getElementById('income-history-charts');
+        if (!container) return;
+
+        if (!items || items.length === 0) {
+            container.classList.remove('budget-charts-grid');
+            container.innerHTML = '<p class="budget-empty">No income history available (need at least 2 months of history)</p>';
+            return;
+        }
+
+        container.classList.add('budget-charts-grid');
+        container.innerHTML = '';
+
+        // Render a line chart per income category
+        items.forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = 'budget-chart-card';
+
+            const header = document.createElement('div');
+            header.className = 'budget-chart-header';
+            const avgExcl = item.averageExcludingExtremes || item.average || 0;
+            header.innerHTML = `
+                <div>
+                    <div class="budget-chart-title">${escapeHtml(item.category)}</div>
+                    <div class="budget-chart-meta">Avg ${formatCurrency(item.average || 0)} | Excl. extremes ${formatCurrency(avgExcl)}</div>
+                </div>
+            `;
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'budget-chart-canvas';
+            const canvasId = `income-history-chart-${(item.category || 'cat').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
+            canvas.id = canvasId;
+            canvas.height = 200;
+            canvas.style.height = '200px';
+            canvas.style.width = '100%';
+
+            card.appendChild(header);
+            card.appendChild(canvas);
+            container.appendChild(card);
+
+            // Group months by year
+            const yearGroups = {};
+            if (item.months) {
+                item.months.forEach(m => {
+                    const year = m.year || 'Unknown';
+                    if (!yearGroups[year]) {
+                        yearGroups[year] = [];
+                    }
+                    yearGroups[year].push(m);
+                });
+            }
+
+            // Get all unique month numbers (01-12) for x-axis
+            const monthNumbers = new Set();
+            if (item.months) {
+                item.months.forEach(m => {
+                    if (m.month && m.month.length >= 7) {
+                        monthNumbers.add(m.month.substring(5, 7));
+                    }
+                });
+            }
+            const monthLabels = Array.from(monthNumbers).sort();
+
+            // Create dataset for each year
+            const datasets = [];
+            const years = Object.keys(yearGroups).sort();
+
+            // Color palette for different years
+            const yearColors = [
+                '#2ecc71', // Green
+                '#27ae60', // Dark green
+                '#16a085', // Teal green
+                '#1abc9c', // Turquoise
+                '#3498db', // Blue
+            ];
+
+            years.forEach((year, index) => {
+                const yearData = yearGroups[year];
+                const monthMap = {};
+                yearData.forEach(m => {
+                    if (m.month && m.month.length >= 7) {
+                        const monthNum = m.month.substring(5, 7);
+                        monthMap[monthNum] = m;
+                    }
+                });
+
+                const dataPoints = monthLabels.map(monthNum => {
+                    const entry = monthMap[monthNum];
+                    return entry ? entry.amount : null;
+                });
+
+                const color = yearColors[index % yearColors.length];
+                datasets.push({
+                    label: year,
+                    data: dataPoints,
+                    borderColor: color,
+                    backgroundColor: rgbaFromHex(color, 0.1),
+                    tension: 0.25,
+                    fill: false,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    spanGaps: true
+                });
+            });
+
+            // Add average line
+            datasets.push({
+                label: 'Average',
+                data: monthLabels.map(() => item.average || 0),
+                borderColor: '#27ae60',
+                borderWidth: 2,
+                borderDash: [6, 4],
+                pointRadius: 0,
+                fill: false,
+                tension: 0
+            });
+
+            // Convert month numbers to readable labels
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const xLabels = monthLabels.map(m => monthNames[parseInt(m) - 1] || m);
+
+            // Set y-axis max to 2x the average
+            const yAxisMax = (item.average || 0) * 2;
+
+            const ctx = canvas.getContext('2d');
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: xLabels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: { autoSkip: true, maxTicksLimit: 12 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: yAxisMax > 0 ? yAxisMax : undefined,
+                            ticks: {
+                                callback: (value) => formatCurrency(value)
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 10,
+                                font: { size: 11 }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    return `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y || 0)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Error loading income history charts:', error);
+        const container = document.getElementById('income-history-charts');
+        if (container) {
+            container.classList.remove('budget-charts-grid');
+            container.innerHTML = '<p class="budget-empty">Error loading income history</p>';
+        }
     }
 }
 

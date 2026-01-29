@@ -644,6 +644,142 @@ func (p *Parser) GetMonthlyMetrics() ([]MonthlyMetrics, error) {
 	return metrics, nil
 }
 
+// GetIncomeHistory returns income by category for each month, for historical tracking
+func (p *Parser) GetIncomeHistory() ([]BudgetHistoryItem, error) {
+	transactions, err := p.GetTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> {category -> amount}
+	monthlyIncome := make(map[string]map[string]float64)
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			if !strings.HasPrefix(posting.Account, "income:") {
+				continue
+			}
+
+			// Extract income category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Income is negative in hledger, so negate it for positive display
+			if amount < 0 {
+				amount = -amount
+			}
+
+			if monthlyIncome[month] == nil {
+				monthlyIncome[month] = make(map[string]float64)
+			}
+			monthlyIncome[month][category] += amount
+		}
+	}
+
+	// Get all unique months and sort them
+	var allMonths []string
+	for month := range monthlyIncome {
+		allMonths = append(allMonths, month)
+	}
+	sort.Strings(allMonths)
+
+	currentMonth := getCurrentYearMonth()
+
+	// Build category history excluding current month for averages
+	categoryHistory := make(map[string][]float64)
+	for month, categories := range monthlyIncome {
+		if month == currentMonth {
+			continue
+		}
+		for category, amount := range categories {
+			categoryHistory[category] = append(categoryHistory[category], amount)
+		}
+	}
+
+	var history []BudgetHistoryItem
+
+	for category, amounts := range categoryHistory {
+		if len(amounts) < 2 {
+			// Need at least two months to establish a reasonable average
+			continue
+		}
+
+		var sum float64
+		for _, v := range amounts {
+			sum += v
+		}
+		avg := sum / float64(len(amounts))
+
+		// Calculate average excluding extremes
+		var filteredAmounts []float64
+		for _, v := range amounts {
+			if v <= avg*2 {
+				filteredAmounts = append(filteredAmounts, v)
+			}
+		}
+		avgExcludingExtremes := avg
+		if len(filteredAmounts) > 0 {
+			var filteredSum float64
+			for _, v := range filteredAmounts {
+				filteredSum += v
+			}
+			avgExcludingExtremes = filteredSum / float64(len(filteredAmounts))
+		}
+
+		var monthData []MonthBudget
+		for _, month := range allMonths {
+			var amount float64
+			if categories, ok := monthlyIncome[month]; ok {
+				amount = categories[category]
+			}
+
+			percent := 0.0
+			if avg > 0 {
+				percent = (amount / avg) * 100
+			}
+
+			// Extract year from month (format: YYYY-MM)
+			year := ""
+			if len(month) >= 4 {
+				year = month[:4]
+			}
+
+			monthData = append(monthData, MonthBudget{
+				Month:           month,
+				Year:            year,
+				Amount:          math.Round(amount*100) / 100,
+				PercentOfBudget: math.Round(percent*100) / 100,
+				OverBudget:      false, // Not applicable for income
+			})
+		}
+
+		history = append(history, BudgetHistoryItem{
+			Category:                 category,
+			Average:                  math.Round(avg*100) / 100,
+			AverageExcludingExtremes: math.Round(avgExcludingExtremes*100) / 100,
+			Months:                   monthData,
+		})
+	}
+
+	sort.Slice(history, func(i, j int) bool {
+		return history[i].Category < history[j].Category
+	})
+
+	return history, nil
+}
+
 // GetCategorySpending returns spending by category for each month
 func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
 	transactions, err := p.GetTransactions()
@@ -707,6 +843,64 @@ func (p *Parser) GetCategorySpending() ([]CategorySpending, error) {
 			return result[i].Month < result[j].Month
 		}
 		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
+}
+
+// GetIncomeBreakdown returns income categories aggregated across all months
+func (p *Parser) GetIncomeBreakdown() ([]CategorySpending, error) {
+	transactions, err := p.GetTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of category -> total amount
+	incomeCategories := make(map[string]float64)
+
+	for _, tx := range transactions {
+		for _, posting := range tx.Postings {
+			// Only include Income accounts
+			if !strings.HasPrefix(posting.Account, "income:") {
+				continue
+			}
+
+			// Extract category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Income amounts are typically negative in hledger, make them positive
+			if amount < 0 {
+				amount = -amount
+			}
+
+			incomeCategories[category] += amount
+		}
+	}
+
+	// Build result
+	var result []CategorySpending
+	for category, amount := range incomeCategories {
+		result = append(result, CategorySpending{
+			Month:    "", // Not monthly, so leave empty
+			Category: category,
+			Amount:   math.Round(amount*100) / 100,
+		})
+	}
+
+	// Sort by amount (descending) to show largest income source first
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Amount > result[j].Amount
 	})
 
 	return result, nil
@@ -1088,6 +1282,76 @@ func (p *Parser) GetAccountDetail(accountName string) (*AccountDetailData, error
 		Account:        accountName,
 		Transactions:   filteredTxs,
 		BalanceHistory: balanceHistory,
+	}, nil
+}
+
+// GetIncomeDetail returns detailed data for a specific income category
+func (p *Parser) GetIncomeDetail(incomeName string) (*CategoryDetailData, error) {
+	transactions, err := p.GetTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter transactions for this income category
+	var filteredTxs []Transaction
+	subcategoryTotals := make(map[string]float64)
+
+	for _, tx := range transactions {
+		hasIncome := false
+		for _, posting := range tx.Postings {
+			if !strings.HasPrefix(posting.Account, "income:") {
+				continue
+			}
+
+			parts := strings.Split(posting.Account, ":")
+			var postingIncome string
+			if len(parts) >= 2 {
+				postingIncome = parts[1]
+			}
+
+			if postingIncome == incomeName {
+				hasIncome = true
+
+				// Extract subcategory based on depth
+				subcategory := p.extractSubcategory(posting.Account, p.settings.SubcategoryDepth)
+
+				var amount float64
+				if len(posting.Amount) > 0 {
+					amount = convertAmount(posting.Amount[0].Quantity)
+				}
+				// For income, amounts are positive
+				if amount < 0 {
+					amount = -amount
+				}
+
+				subcategoryTotals[subcategory] += amount
+			}
+		}
+
+		if hasIncome {
+			filteredTxs = append(filteredTxs, tx)
+		}
+	}
+
+	// Build breakdown
+	var breakdown []SubcategoryBreakdown
+	for name, amount := range subcategoryTotals {
+		breakdown = append(breakdown, SubcategoryBreakdown{
+			Name:   name,
+			Amount: amount,
+		})
+	}
+
+	// Sort by amount descending
+	sort.Slice(breakdown, func(i, j int) bool {
+		return breakdown[i].Amount > breakdown[j].Amount
+	})
+
+	return &CategoryDetailData{
+		Category:      incomeName,
+		Transactions:  filteredTxs,
+		BudgetHistory: []BudgetHistoryItem{}, // Income doesn't have budget history like expenses
+		Breakdown:     breakdown,
 	}, nil
 }
 

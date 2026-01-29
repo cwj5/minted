@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -260,6 +261,28 @@ func (s *Service) HandleCategorySpending(c *gin.Context) {
 	c.JSON(http.StatusOK, cache.CategorySpending)
 }
 
+// HandleIncomeBreakdown returns income categories aggregated across all months
+func (s *Service) HandleIncomeBreakdown(c *gin.Context) {
+	incomeBreakdown, err := s.parser.GetIncomeBreakdown()
+	if err != nil {
+		log.Printf("Error getting income breakdown: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get income breakdown"})
+		return
+	}
+	c.JSON(http.StatusOK, incomeBreakdown)
+}
+
+// HandleIncomeHistory returns income history by category and month
+func (s *Service) HandleIncomeHistory(c *gin.Context) {
+	incomeHistory, err := s.parser.GetIncomeHistory()
+	if err != nil {
+		log.Printf("Error getting income history: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get income history"})
+		return
+	}
+	c.JSON(http.StatusOK, incomeHistory)
+}
+
 // HandleNetWorthOverTime returns net worth for each month
 func (s *Service) HandleNetWorthOverTime(c *gin.Context) {
 	cache, ok := s.getCache()
@@ -411,6 +434,23 @@ func (s *Service) HandleAccountDetail(c *gin.Context) {
 	}
 
 	detail, err := s.parser.GetAccountDetail(account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, detail)
+}
+
+// HandleIncomeDetail returns detailed view for a specific income category
+func (s *Service) HandleIncomeDetail(c *gin.Context) {
+	income := c.Query("income")
+	if income == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "income parameter required"})
+		return
+	}
+
+	detail, err := s.parser.GetIncomeDetail(income)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
