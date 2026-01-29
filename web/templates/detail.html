@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .title }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+
+        .breadcrumb a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+
+        .breadcrumb-separator {
+            color: #95a5a6;
+        }
+
+        .breadcrumb-current {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        .detail-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+
+        .budget-charts-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .budget-chart-card {
+            background: #f7f9fb;
+            border: 1px solid #e5e8ec;
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .budget-chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .budget-chart-title {
+            font-weight: 700;
+            color: #2c3e50;
+        }
+
+        .budget-chart-meta {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+
+        .budget-chart-canvas {
+            width: 100%;
+            height: 200px;
+            min-height: 200px;
+            max-height: 200px;
+            display: block;
+        }
+
+        .breakdown-section {
+            margin-top: 20px;
+        }
+
+        .chart-container-large {
+            background: white;
+            border: 1px solid #e5e8ec;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-container-large h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        @media (max-width: 900px) {
+            .budget-chart-canvas {
+                height: 160px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <h1>💰 Minted</h1>
+                    <p>hledger Dashboard</p>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a href="/" id="backToDashboard"
+                        style="padding: 6px 12px; border: 1px solid #3498db; background: white; color: #3498db; border-radius: 4px; text-decoration: none; font-size: 13px;">←
+                        Back to Dashboard</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard">
+            <!-- Breadcrumb -->
+            <div class="detail-header">
+                <div>
+                    <div class="breadcrumb">
+                        <a href="/">Dashboard</a>
+                        <span class="breadcrumb-separator">›</span>
+                        <span class="breadcrumb-current" id="breadcrumb-type">Detail</span>
+                        <span class="breadcrumb-separator">›</span>
+                        <span class="breadcrumb-current" id="breadcrumb-name">Loading...</span>
+                    </div>
+                    <h1 class="detail-title" id="detail-title">Loading...</h1>
+                </div>
+            </div>
+
+            <!-- Breakdown Section -->
+            <section class="breakdown-section" id="breakdown-section" style="display: none;">
+                <div class="chart-container-large">
+                    <h3 id="breakdown-chart-title">Breakdown</h3>
+                    <canvas id="breakdownChart" style="max-height: 400px;"></canvas>
+                </div>
+            </section>
+
+            <!-- Budget History Section -->
+            <section class="budget-section" id="budget-history-section" style="display: none;">
+                <h2 id="budget-history-title">Budget History</h2>
+                <div id="detail-budget-charts" class="budget-charts-grid">
+                    <p class="budget-empty">Loading budget history...</p>
+                </div>
+            </section>
+
+            <!-- Balance History Section (for accounts) -->
+            <section class="budget-section" id="balance-history-section" style="display: none;">
+                <h2>Balance History</h2>
+                <div class="chart-container-large">
+                    <canvas id="balanceHistoryChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Transactions -->
+            <section class="transactions-section">
+                <h2 id="transactions-title">Transactions</h2>
+                <div id="detail-transactions" class="transactions-list">
+                    <p>Loading transactions...</p>
+                </div>
+                <div id="detail-transactions-pagination" class="pagination" style="display: none;">
+                    <button id="detail-first-page" class="pagination-btn pagination-btn-icon"
+                        title="First page">⟨⟨</button>
+                    <button id="detail-prev-page" class="pagination-btn">← Previous</button>
+                    <div class="page-selector">
+                        <span class="page-label">Page</span>
+                        <input type="number" id="detail-page-input" class="page-input" min="1" value="1">
+                        <span class="page-total">of <span id="detail-total-pages">1</span></span>
+                    </div>
+                    <span id="detail-page-info" class="page-info"></span>
+                    <button id="detail-next-page" class="pagination-btn">Next →</button>
+                    <button id="detail-last-page" class="pagination-btn pagination-btn-icon"
+                        title="Last page">⟩⟩</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.0.0/index.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="/static/js/dashboard.js?v=13"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
+</body>
+
+</html>

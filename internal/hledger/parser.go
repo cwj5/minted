@@ -111,6 +111,41 @@ type YearOverYearData struct {
 	Years map[string]float64 `json:"years"` // year -> spending amount, e.g., "2024" -> 500.00
 }
 
+// SubcategoryBreakdown represents spending breakdown by subcategories
+type SubcategoryBreakdown struct {
+	Name   string  `json:"name"`
+	Amount float64 `json:"amount"`
+}
+
+// CategoryDetailData represents detailed view data for a category
+type CategoryDetailData struct {
+	Category      string                 `json:"category"`
+	Transactions  []Transaction          `json:"transactions"`
+	BudgetHistory []BudgetHistoryItem    `json:"budgetHistory"`
+	Breakdown     []SubcategoryBreakdown `json:"breakdown"`
+}
+
+// TierDetailData represents detailed view data for a tier
+type TierDetailData struct {
+	Tier          string                 `json:"tier"`
+	Transactions  []Transaction          `json:"transactions"`
+	BudgetHistory []BudgetHistoryItem    `json:"budgetHistory"`
+	Breakdown     []SubcategoryBreakdown `json:"breakdown"`
+}
+
+// AccountDetailData represents detailed view data for an account
+type AccountDetailData struct {
+	Account        string                `json:"account"`
+	Transactions   []Transaction         `json:"transactions"`
+	BalanceHistory []BalanceHistoryPoint `json:"balanceHistory"`
+}
+
+// BalanceHistoryPoint represents account balance at a point in time
+type BalanceHistoryPoint struct {
+	Date    string  `json:"date"`
+	Balance float64 `json:"balance"`
+}
+
 // Parser handles hledger journal parsing
 type Parser struct {
 	journalFile string
@@ -800,6 +835,260 @@ func (p *Parser) GetCategoryTrends() ([]CategoryTrendData, error) {
 	})
 
 	return result, nil
+}
+
+// extractSubcategory extracts subcategory from account path based on depth setting
+// Example: "expenses:groceries:meat:beef" with depth=1 -> "groceries:meat"
+// with depth=2 -> "groceries:meat:beef"
+func (p *Parser) extractSubcategory(accountPath string, depth int) string {
+	parts := strings.Split(accountPath, ":")
+
+	// For expenses, skip first part (expenses)
+	if strings.HasPrefix(accountPath, "expenses:") && len(parts) > 1 {
+		endIndex := min(1+depth+1, len(parts))
+		return strings.Join(parts[1:endIndex], ":")
+	}
+
+	// For other account types, include the type prefix
+	endIndex := min(depth+1, len(parts))
+	return strings.Join(parts[:endIndex], ":")
+}
+
+// GetCategoryDetail returns detailed data for a specific category
+func (p *Parser) GetCategoryDetail(category string) (*CategoryDetailData, error) {
+	transactions, err := p.GetTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter transactions for this category
+	var filteredTxs []Transaction
+	subcategoryTotals := make(map[string]float64)
+
+	for _, tx := range transactions {
+		hasCategory := false
+		for _, posting := range tx.Postings {
+			if !strings.HasPrefix(posting.Account, "expenses:") {
+				continue
+			}
+
+			parts := strings.Split(posting.Account, ":")
+			var postingCategory string
+			if len(parts) >= 2 {
+				postingCategory = parts[1]
+			}
+
+			if postingCategory == category {
+				hasCategory = true
+
+				// Extract subcategory based on depth
+				subcategory := p.extractSubcategory(posting.Account, p.settings.SubcategoryDepth)
+
+				var amount float64
+				if len(posting.Amount) > 0 {
+					amount = convertAmount(posting.Amount[0].Quantity)
+				}
+				if amount < 0 {
+					amount = -amount
+				}
+
+				subcategoryTotals[subcategory] += amount
+			}
+		}
+
+		if hasCategory {
+			filteredTxs = append(filteredTxs, tx)
+		}
+	}
+
+	// Build breakdown
+	var breakdown []SubcategoryBreakdown
+	for name, amount := range subcategoryTotals {
+		breakdown = append(breakdown, SubcategoryBreakdown{
+			Name:   name,
+			Amount: amount,
+		})
+	}
+
+	// Sort by amount descending
+	sort.Slice(breakdown, func(i, j int) bool {
+		return breakdown[i].Amount > breakdown[j].Amount
+	})
+
+	// Get budget history for this category
+	budgetHistory, err := p.GetBudgetHistory()
+	if err != nil {
+		return nil, err
+	}
+
+	var categoryBudgetHistory []BudgetHistoryItem
+	for _, item := range budgetHistory {
+		if item.Category == category {
+			categoryBudgetHistory = append(categoryBudgetHistory, item)
+		}
+	}
+
+	return &CategoryDetailData{
+		Category:      category,
+		Transactions:  filteredTxs,
+		BudgetHistory: categoryBudgetHistory,
+		Breakdown:     breakdown,
+	}, nil
+}
+
+// GetTierDetail returns detailed data for a specific tier
+func (p *Parser) GetTierDetail(tierName string) (*TierDetailData, error) {
+	// Find the tier
+	var tier *config.Tier
+	for i := range p.settings.Tiers {
+		if p.settings.Tiers[i].Name == tierName {
+			tier = &p.settings.Tiers[i]
+			break
+		}
+	}
+
+	if tier == nil {
+		return nil, nil
+	}
+
+	transactions, err := p.GetTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter transactions for categories in this tier
+	var filteredTxs []Transaction
+	categoryTotals := make(map[string]float64)
+
+	for _, tx := range transactions {
+		hasTierCategory := false
+		for _, posting := range tx.Postings {
+			if !strings.HasPrefix(posting.Account, "expenses:") {
+				continue
+			}
+
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			}
+
+			// Check if category is in this tier
+			for _, tierCat := range tier.Categories {
+				if category == tierCat {
+					hasTierCategory = true
+
+					var amount float64
+					if len(posting.Amount) > 0 {
+						amount = convertAmount(posting.Amount[0].Quantity)
+					}
+					if amount < 0 {
+						amount = -amount
+					}
+
+					categoryTotals[category] += amount
+				}
+			}
+		}
+
+		if hasTierCategory {
+			filteredTxs = append(filteredTxs, tx)
+		}
+	}
+
+	// Build breakdown by category (not subcategory for tiers)
+	var breakdown []SubcategoryBreakdown
+	for name, amount := range categoryTotals {
+		breakdown = append(breakdown, SubcategoryBreakdown{
+			Name:   name,
+			Amount: amount,
+		})
+	}
+
+	// Sort by amount descending
+	sort.Slice(breakdown, func(i, j int) bool {
+		return breakdown[i].Amount > breakdown[j].Amount
+	})
+
+	// Get budget history for all categories in this tier
+	budgetHistory, err := p.GetBudgetHistory()
+	if err != nil {
+		return nil, err
+	}
+
+	var tierBudgetHistory []BudgetHistoryItem
+	for _, item := range budgetHistory {
+		for _, tierCat := range tier.Categories {
+			if item.Category == tierCat {
+				tierBudgetHistory = append(tierBudgetHistory, item)
+				break
+			}
+		}
+	}
+
+	return &TierDetailData{
+		Tier:          tierName,
+		Transactions:  filteredTxs,
+		BudgetHistory: tierBudgetHistory,
+		Breakdown:     breakdown,
+	}, nil
+}
+
+// GetAccountDetail returns detailed data for a specific account
+func (p *Parser) GetAccountDetail(accountName string) (*AccountDetailData, error) {
+	transactions, err := p.GetTransactions()
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter transactions for this account
+	var filteredTxs []Transaction
+	balanceMap := make(map[string]float64)
+
+	runningBalance := 0.0
+
+	for _, tx := range transactions {
+		hasAccount := false
+		txAmount := 0.0
+
+		for _, posting := range tx.Postings {
+			if posting.Account == accountName {
+				hasAccount = true
+
+				var amount float64
+				if len(posting.Amount) > 0 {
+					amount = convertAmount(posting.Amount[0].Quantity)
+				}
+				txAmount += amount
+			}
+		}
+
+		if hasAccount {
+			filteredTxs = append(filteredTxs, tx)
+			runningBalance += txAmount
+			balanceMap[tx.Date] = runningBalance
+		}
+	}
+
+	// Build balance history
+	var balanceHistory []BalanceHistoryPoint
+	for date, balance := range balanceMap {
+		balanceHistory = append(balanceHistory, BalanceHistoryPoint{
+			Date:    date,
+			Balance: balance,
+		})
+	}
+
+	// Sort by date
+	sort.Slice(balanceHistory, func(i, j int) bool {
+		return balanceHistory[i].Date < balanceHistory[j].Date
+	})
+
+	return &AccountDetailData{
+		Account:        accountName,
+		Transactions:   filteredTxs,
+		BalanceHistory: balanceHistory,
+	}, nil
 }
 
 // GetYearOverYearComparison returns spending comparison for same months across years

@@ -422,6 +422,13 @@
                     <input type="text" id="transactionLimit" placeholder="Enter number"
                         onchange="updateTransactionLimit()">
                 </div>
+                <div class="preference-item">
+                    <label for="subcategoryDepth">Subcategory Depth (drill-down levels)</label>
+                    <input type="number" id="subcategoryDepth" min="1" max="5" value="1"
+                        onchange="updateSubcategoryDepth()">
+                    <small style="color: #7f8c8d; display: block; margin-top: 4px;">Controls how many levels of
+                        subcategories to show when drilling down (default: 1)</small>
+                </div>
             </div>
         </div>
     </div>
@@ -684,6 +691,7 @@
         function updatePreferencesUI() {
             document.getElementById('dateRangeSelect').value = currentSettings.preferences?.defaultDateRange || '6months';
             document.getElementById('transactionLimit').value = currentSettings.preferences?.transactionLimit || '0';
+            document.getElementById('subcategoryDepth').value = currentSettings.subcategoryDepth || 1;
         }
 
         async function updateDateRange() {
@@ -696,6 +704,12 @@
             if (!currentSettings.preferences) currentSettings.preferences = {};
             const value = parseInt(document.getElementById('transactionLimit').value) || 0;
             currentSettings.preferences.transactionLimit = value;
+            await saveSettings();
+        }
+
+        async function updateSubcategoryDepth() {
+            const value = parseInt(document.getElementById('subcategoryDepth').value) || 1;
+            currentSettings.subcategoryDepth = Math.max(1, Math.min(5, value)); // Clamp between 1-5
             await saveSettings();
         }
 

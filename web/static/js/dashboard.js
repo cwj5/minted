@@ -214,7 +214,9 @@ async function loadAccounts() {
             });
 
         container.innerHTML = filteredAccounts.map(account => `
-            <div class="account-item ${account.isLiability ? 'liability-account' : ''}">
+            <div class="account-item ${account.isLiability ? 'liability-account' : ''}" 
+                 style="cursor: pointer;" 
+                 onclick="navigateToDetail('account', '${escapeHtml(account.aname)}')">
                 <div class="account-name">${escapeHtml(account.displayName)}</div>
                 <div class="account-balance">${formatCurrency(account.displayBalance)}</div>
             </div>
@@ -386,6 +388,9 @@ async function loadBudgetHistory() {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    onClick: () => {
+                        navigateToDetail('category', item.category);
+                    },
                     scales: {
                         x: {
                             ticks: { autoSkip: true, maxTicksLimit: 12 }
@@ -418,6 +423,9 @@ async function loadBudgetHistory() {
                     }
                 }
             });
+
+            // Add cursor pointer style to the card
+            card.style.cursor = 'pointer';
 
             budgetCharts.push(chart);
         });
@@ -953,6 +961,15 @@ async function loadCategorySpendingChart() {
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const category = labels[index];
+                        if (category !== 'Other') {
+                            navigateToDetail('category', category);
+                        }
+                    }
+                },
                 plugins: {
                     legend: {
                         position: 'bottom',
@@ -1000,18 +1017,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    loadSettings().then(() => {
-        loadSummary();
-        loadBudgetHistory();
-        loadSavingsRateChart();
-        loadAccounts();
-        loadTransactions();
-        loadIncomeExpensesChart();
-        loadCategorySpendingChart();
-        loadNetWorthChart();
-        loadCategoryTrendsChart();
-        loadYearOverYearChart();
-    });
+    // Check if this is a detail page
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('page') === 'detail') {
+        loadDetailPage();
+    } else {
+        loadSettings().then(() => {
+            loadSummary();
+            loadBudgetHistory();
+            loadSavingsRateChart();
+            loadAccounts();
+            loadTransactions();
+            loadIncomeExpensesChart();
+            loadCategorySpendingChart();
+            loadNetWorthChart();
+            loadCategoryTrendsChart();
+            loadYearOverYearChart();
+        });
+    }
 });
 
 // Convert YYYY-MM to Date for chart display
@@ -1128,6 +1151,13 @@ async function loadCategoryTrendsChart() {
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const datasetIndex = elements[0].datasetIndex;
+                        const tierName = data[datasetIndex].category;
+                        navigateToDetail('tier', tierName);
+                    }
+                },
                 interaction: {
                     mode: 'index',
                     intersect: false
@@ -1249,3 +1279,646 @@ async function loadYearOverYearChart() {
     }
 }
 
+
+// ===== DETAIL PAGE FUNCTIONALITY =====
+
+let detailTransactions = [];
+let detailCurrentPage = 1;
+const detailItemsPerPage = 20;
+
+// Navigate to detail page
+function navigateToDetail(type, name) {
+    const params = new URLSearchParams();
+    params.set('page', 'detail');
+    params.set(type, encodeURIComponent(name));
+    window.location.href = '/?' + params.toString();
+}
+
+// Load detail page based on URL parameters
+async function loadDetailPage() {
+    await loadSettings();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const category = urlParams.get('category');
+    const tier = urlParams.get('tier');
+    const account = urlParams.get('account');
+
+    if (category) {
+        loadCategoryDetail(category);
+    } else if (tier) {
+        loadTierDetail(tier);
+    } else if (account) {
+        loadAccountDetail(account);
+    } else {
+        document.getElementById('detail-title').textContent = 'Invalid Detail View';
+        document.getElementById('breadcrumb-type').textContent = 'Error';
+        document.getElementById('breadcrumb-name').textContent = 'No filter specified';
+    }
+
+    // Set up detail page pagination
+    setupDetailPagination();
+}
+
+// Setup pagination for detail page
+function setupDetailPagination() {
+    const firstBtn = document.getElementById('detail-first-page');
+    const prevBtn = document.getElementById('detail-prev-page');
+    const nextBtn = document.getElementById('detail-next-page');
+    const lastBtn = document.getElementById('detail-last-page');
+    const pageInput = document.getElementById('detail-page-input');
+
+    if (firstBtn) firstBtn.addEventListener('click', () => goToDetailPage(1));
+    if (prevBtn) prevBtn.addEventListener('click', () => goToDetailPage(detailCurrentPage - 1));
+    if (nextBtn) nextBtn.addEventListener('click', () => goToDetailPage(detailCurrentPage + 1));
+    if (lastBtn) lastBtn.addEventListener('click', () => {
+        const totalPages = Math.ceil(detailTransactions.length / detailItemsPerPage);
+        goToDetailPage(totalPages);
+    });
+
+    if (pageInput) {
+        pageInput.addEventListener('change', (e) => goToDetailPage(parseInt(e.target.value)));
+        pageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                goToDetailPage(parseInt(e.target.value));
+            }
+        });
+    }
+}
+
+// Navigate to specific page in detail view
+function goToDetailPage(page) {
+    const totalPages = Math.ceil(detailTransactions.length / detailItemsPerPage);
+    if (page < 1 || page > totalPages) return;
+
+    detailCurrentPage = page;
+    renderDetailTransactions();
+}
+
+// Render detail transactions with pagination
+function renderDetailTransactions() {
+    const container = document.getElementById('detail-transactions');
+    const paginationContainer = document.getElementById('detail-transactions-pagination');
+
+    if (!detailTransactions || detailTransactions.length === 0) {
+        container.innerHTML = '<p>No transactions found.</p>';
+        paginationContainer.style.display = 'none';
+        return;
+    }
+
+    // Get filter type from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const filterCategory = urlParams.get('category');
+    const filterTier = urlParams.get('tier');
+    const filterAccount = urlParams.get('account');
+
+    const totalPages = Math.ceil(detailTransactions.length / detailItemsPerPage);
+    const startIndex = (detailCurrentPage - 1) * detailItemsPerPage;
+    const endIndex = Math.min(startIndex + detailItemsPerPage, detailTransactions.length);
+    const pageTransactions = detailTransactions.slice(startIndex, endIndex);
+
+    let html = '<table class="transactions-table"><thead><tr>';
+    html += '<th>Date</th><th>Description</th><th>Account</th><th>Amount</th>';
+    html += '</tr></thead><tbody>';
+
+    pageTransactions.forEach(tx => {
+        tx.tpostings.forEach(posting => {
+            // Filter postings based on what we're viewing
+            let shouldShow = false;
+
+            if (filterCategory) {
+                // Show only expense postings for this category
+                if (posting.paccount.startsWith('expenses:')) {
+                    const parts = posting.paccount.split(':');
+                    if (parts[1] === filterCategory) {
+                        shouldShow = true;
+                    }
+                }
+            } else if (filterTier) {
+                // Show only expense postings for categories in this tier
+                if (posting.paccount.startsWith('expenses:')) {
+                    const parts = posting.paccount.split(':');
+                    const category = parts[1];
+                    // Find the tier and check if category is in it
+                    if (appSettings && appSettings.tiers) {
+                        for (const tier of appSettings.tiers) {
+                            if (tier.name === filterTier && tier.categories.includes(category)) {
+                                shouldShow = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else if (filterAccount) {
+                // Show the posting for this account
+                if (posting.paccount === filterAccount) {
+                    shouldShow = true;
+                }
+            }
+
+            if (!shouldShow) {
+                return;
+            }
+
+            const amount = posting.pamount && posting.pamount.length > 0
+                ? convertPostingAmount(posting.pamount[0])
+                : 0;
+            html += `<tr>
+                <td>${tx.tdate}</td>
+                <td>${tx.tdescription}</td>
+                <td>${posting.paccount}</td>
+                <td class="${amount < 0 ? 'negative' : 'positive'}">${formatCurrency(Math.abs(amount))}</td>
+            </tr>`;
+        });
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    // Update pagination
+    paginationContainer.style.display = 'flex';
+    document.getElementById('detail-page-input').value = detailCurrentPage;
+    document.getElementById('detail-total-pages').textContent = totalPages;
+    document.getElementById('detail-page-info').textContent = `${startIndex + 1}-${endIndex} of ${detailTransactions.length}`;
+
+    // Enable/disable buttons
+    document.getElementById('detail-first-page').disabled = detailCurrentPage === 1;
+    document.getElementById('detail-prev-page').disabled = detailCurrentPage === 1;
+    document.getElementById('detail-next-page').disabled = detailCurrentPage === totalPages;
+    document.getElementById('detail-last-page').disabled = detailCurrentPage === totalPages;
+}
+
+// Convert posting amount to float
+function convertPostingAmount(amount) {
+    if (!amount || !amount.aquantity) return 0;
+    const mantissa = amount.aquantity.decimalMantissa || 0;
+    const places = amount.aquantity.decimalPlaces || 0;
+    const divisor = Math.pow(10, places);
+    return mantissa / divisor;
+}
+
+// Load category detail
+async function loadCategoryDetail(category) {
+    try {
+        const response = await fetch(`/api/detail/category?category=${encodeURIComponent(category)}`);
+        const data = await response.json();
+
+        // Update page title and breadcrumb
+        document.getElementById('detail-title').textContent = category;
+        document.getElementById('breadcrumb-type').textContent = 'Category';
+        document.getElementById('breadcrumb-name').textContent = category;
+        document.getElementById('transactions-title').textContent = `${category} Transactions`;
+
+        // Store transactions
+        detailTransactions = data.transactions || [];
+        renderDetailTransactions();
+
+        // Render breakdown chart
+        if (data.breakdown && data.breakdown.length > 0) {
+            renderBreakdownChart(data.breakdown, 'Subcategories');
+        }
+
+        // Render budget history
+        if (data.budgetHistory && data.budgetHistory.length > 0) {
+            renderDetailBudgetHistory(data.budgetHistory);
+        }
+    } catch (error) {
+        console.error('Error loading category detail:', error);
+    }
+}
+
+// Load tier detail
+async function loadTierDetail(tier) {
+    try {
+        const response = await fetch(`/api/detail/tier?tier=${encodeURIComponent(tier)}`);
+        const data = await response.json();
+
+        // Update page title and breadcrumb
+        document.getElementById('detail-title').textContent = tier + ' Spending';
+        document.getElementById('breadcrumb-type').textContent = 'Tier';
+        document.getElementById('breadcrumb-name').textContent = tier;
+        document.getElementById('transactions-title').textContent = `${tier} Transactions`;
+
+        // Store transactions
+        detailTransactions = data.transactions || [];
+        renderDetailTransactions();
+
+        // Render breakdown chart (categories within tier)
+        if (data.breakdown && data.breakdown.length > 0) {
+            renderBreakdownChart(data.breakdown, 'Categories in ' + tier);
+        }
+
+        // Render budget history (multi-line for tier)
+        if (data.budgetHistory && data.budgetHistory.length > 0) {
+            renderDetailBudgetHistory(data.budgetHistory, true);
+        }
+    } catch (error) {
+        console.error('Error loading tier detail:', error);
+    }
+}
+
+// Load account detail
+async function loadAccountDetail(account) {
+    try {
+        const response = await fetch(`/api/detail/account?account=${encodeURIComponent(account)}`);
+        const data = await response.json();
+
+        // Clean up account name for display
+        let displayName = account;
+        if (account.startsWith('assets:')) {
+            displayName = account.substring(7);
+        } else if (account.startsWith('liabilities:')) {
+            displayName = account.substring(12);
+        }
+        if (displayName.endsWith(':')) {
+            displayName = displayName.substring(0, displayName.length - 1);
+        }
+
+        // Update page title and breadcrumb
+        document.getElementById('detail-title').textContent = displayName;
+        document.getElementById('breadcrumb-type').textContent = 'Account';
+        document.getElementById('breadcrumb-name').textContent = displayName;
+        document.getElementById('transactions-title').textContent = `${displayName} Transactions`;
+
+        // Store transactions
+        detailTransactions = data.transactions || [];
+        renderDetailTransactions();
+
+        // Hide breakdown and budget sections for accounts
+        document.getElementById('breakdown-section').style.display = 'none';
+        document.getElementById('budget-history-section').style.display = 'none';
+
+        // Render balance history
+        if (data.balanceHistory && data.balanceHistory.length > 0) {
+            renderBalanceHistory(data.balanceHistory);
+        }
+    } catch (error) {
+        console.error('Error loading account detail:', error);
+    }
+}
+
+// Render breakdown chart (bar chart)
+function renderBreakdownChart(breakdown, title) {
+    const section = document.getElementById('breakdown-section');
+    section.style.display = 'block';
+
+    document.getElementById('breakdown-chart-title').textContent = title;
+
+    const ctx = document.getElementById('breakdownChart');
+    if (!ctx) return;
+
+    const labels = breakdown.map(item => item.name);
+    const amounts = breakdown.map(item => item.amount);
+
+    // Generate colors
+    const colors = labels.map((label, idx) => {
+        const hue = (idx * 137.5) % 360; // Golden angle for color distribution
+        return `hsl(${hue}, 60%, 55%)`;
+    });
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Amount',
+                data: amounts,
+                backgroundColor: colors,
+                borderColor: colors.map(c => c.replace('55%', '45%')),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            indexAxis: 'y',
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function (value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return formatCurrency(context.parsed.x);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render balance history chart
+function renderBalanceHistory(balanceHistory) {
+    const section = document.getElementById('balance-history-section');
+    section.style.display = 'block';
+
+    const ctx = document.getElementById('balanceHistoryChart');
+    if (!ctx) return;
+
+    const chartData = balanceHistory.map(point => ({
+        x: new Date(point.date),
+        y: point.balance
+    }));
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: 'Balance',
+                data: chartData,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'month',
+                        displayFormats: {
+                            month: 'MMM yyyy'
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function (value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return formatCurrency(context.parsed.y);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render detail budget history (similar to main dashboard)
+function renderDetailBudgetHistory(budgetHistory, isMultiLine = false) {
+    const section = document.getElementById('budget-history-section');
+    section.style.display = 'block';
+
+    const container = document.getElementById('detail-budget-charts');
+    container.innerHTML = '';
+
+    if (!isMultiLine) {
+        // Single category - render one chart
+        budgetHistory.forEach(item => {
+            renderDetailBudgetChart(item);
+        });
+    } else {
+        // Multiple categories (tier) - render multi-line chart
+        renderTierBudgetChart(budgetHistory);
+    }
+}
+
+// Render a single budget chart (for category)
+function renderDetailBudgetChart(budgetItem) {
+    const container = document.getElementById('detail-budget-charts');
+
+    if (!budgetItem.months || budgetItem.months.length < 2) {
+        return;
+    }
+
+    const chartCard = document.createElement('div');
+    chartCard.className = 'budget-chart-card';
+
+    const header = document.createElement('div');
+    header.className = 'budget-chart-header';
+    header.innerHTML = `
+        <div>
+            <div class="budget-chart-title">${budgetItem.category}</div>
+            <div class="budget-chart-meta">
+                Avg: ${formatCurrency(budgetItem.average)} | 
+                Avg (excl. extremes): ${formatCurrency(budgetItem.averageExcludingExtremes)}
+            </div>
+        </div>
+    `;
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'budget-chart-canvas';
+
+    chartCard.appendChild(header);
+    chartCard.appendChild(canvas);
+    container.appendChild(chartCard);
+
+    // Group by year
+    const yearData = {};
+    budgetItem.months.forEach(m => {
+        if (!yearData[m.year]) {
+            yearData[m.year] = [];
+        }
+        yearData[m.year].push({
+            month: m.month,
+            amount: m.amount
+        });
+    });
+
+    const datasets = [];
+    const years = Object.keys(yearData).sort();
+    const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6'];
+
+    years.forEach((year, idx) => {
+        const data = yearData[year].map(m => ({
+            x: parseMonthToDate(m.month),
+            y: m.amount
+        }));
+
+        datasets.push({
+            label: year,
+            data: data,
+            borderColor: colors[idx % colors.length],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.1
+        });
+    });
+
+    // Add average lines
+    const avgLineData = budgetItem.months.map(m => ({
+        x: parseMonthToDate(m.month),
+        y: budgetItem.average
+    }));
+
+    datasets.push({
+        label: 'Average',
+        data: avgLineData,
+        borderColor: '#95a5a6',
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        tension: 0
+    });
+
+    const yMax = Math.max(budgetItem.average * 2, ...budgetItem.months.map(m => m.amount));
+
+    new Chart(canvas, {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'month',
+                        displayFormats: { month: 'MMM yyyy' }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    max: yMax,
+                    ticks: {
+                        callback: value => '$' + value.toLocaleString()
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { boxWidth: 12, font: { size: 10 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y)}`
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render tier budget chart (multi-category)
+function renderTierBudgetChart(budgetHistory) {
+    const container = document.getElementById('detail-budget-charts');
+
+    document.getElementById('budget-history-title').textContent = 'Budget History (by Category)';
+
+    // Create one chart with lines for each category plus a total
+    const chartCard = document.createElement('div');
+    chartCard.className = 'budget-chart-card';
+    chartCard.style.height = '400px';
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'budget-chart-canvas';
+    canvas.style.height = '380px';
+    canvas.style.maxHeight = '380px';
+
+    chartCard.appendChild(canvas);
+    container.appendChild(chartCard);
+
+    const datasets = [];
+    const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'];
+
+    // Add a dataset for each category
+    budgetHistory.forEach((item, idx) => {
+        const data = item.months.map(m => ({
+            x: parseMonthToDate(m.month),
+            y: m.amount
+        }));
+
+        datasets.push({
+            label: item.category,
+            data: data,
+            borderColor: colors[idx % colors.length],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 2,
+            tension: 0.1
+        });
+    });
+
+    // Calculate total line
+    const allMonths = {};
+    budgetHistory.forEach(item => {
+        item.months.forEach(m => {
+            if (!allMonths[m.month]) {
+                allMonths[m.month] = 0;
+            }
+            allMonths[m.month] += m.amount;
+        });
+    });
+
+    const totalData = Object.keys(allMonths).sort().map(month => ({
+        x: parseMonthToDate(month),
+        y: allMonths[month]
+    }));
+
+    datasets.push({
+        label: 'Total',
+        data: totalData,
+        borderColor: '#2c3e50',
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        pointRadius: 3,
+        tension: 0.1
+    });
+
+    new Chart(canvas, {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'month',
+                        displayFormats: { month: 'MMM yyyy' }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: value => '$' + value.toLocaleString()
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { boxWidth: 12, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y)}`
+                    }
+                }
+            }
+        }
+    });
+}

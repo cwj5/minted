@@ -10,10 +10,11 @@ import (
 
 // Settings represents all application configuration
 type Settings struct {
-	Variables   map[string]string      `json:"variables"`
-	Tiers       []Tier                 `json:"tiers"`
-	Theme       string                 `json:"theme"`
-	Preferences map[string]interface{} `json:"preferences"`
+	Variables        map[string]string      `json:"variables"`
+	Tiers            []Tier                 `json:"tiers"`
+	Theme            string                 `json:"theme"`
+	Preferences      map[string]interface{} `json:"preferences"`
+	SubcategoryDepth int                    `json:"subcategoryDepth"`
 }
 
 // Tier represents a spending tier with assigned categories
@@ -52,6 +53,7 @@ func DefaultSettings() *Settings {
 			"transactionLimit": 0,
 			"defaultDateRange": "6months",
 		},
+		SubcategoryDepth: 1,
 	}
 }
 

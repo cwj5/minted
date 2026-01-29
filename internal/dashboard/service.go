@@ -164,6 +164,15 @@ func (s *Service) getCache() (*CachedData, bool) {
 
 // HandleIndex serves the main dashboard page
 func (s *Service) HandleIndex(c *gin.Context) {
+	// Check if this is a detail page request
+	page := c.Query("page")
+	if page == "detail" {
+		c.HTML(http.StatusOK, "detail.html", gin.H{
+			"title": "Detail - Minted",
+		})
+		return
+	}
+
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"title": "Minted - hledger Dashboard",
 	})
@@ -352,4 +361,60 @@ func (s *Service) HandleCacheRefresh(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "cache rebuilt", "lastRefresh": time.Now()})
+}
+
+// HandleCategoryDetail returns detailed view for a specific category
+func (s *Service) HandleCategoryDetail(c *gin.Context) {
+	category := c.Query("category")
+	if category == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "category parameter required"})
+		return
+	}
+
+	detail, err := s.parser.GetCategoryDetail(category)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, detail)
+}
+
+// HandleTierDetail returns detailed view for a specific tier
+func (s *Service) HandleTierDetail(c *gin.Context) {
+	tier := c.Query("tier")
+	if tier == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tier parameter required"})
+		return
+	}
+
+	detail, err := s.parser.GetTierDetail(tier)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if detail == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "tier not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, detail)
+}
+
+// HandleAccountDetail returns detailed view for a specific account
+func (s *Service) HandleAccountDetail(c *gin.Context) {
+	account := c.Query("account")
+	if account == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "account parameter required"})
+		return
+	}
+
+	detail, err := s.parser.GetAccountDetail(account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, detail)
 }
