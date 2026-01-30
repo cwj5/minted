@@ -110,39 +110,583 @@ func (p *Parser) GetTransactionsFiltered(startDate, endDate string) ([]Transacti
 	return transactions, nil
 }
 
-// Stub filtered methods that delegate to existing methods
-// These can be enhanced later to properly filter their specific data
-
-func (p *Parser) GetBudgetHistoryFiltered(startDate, endDate string) ([]BudgetHistoryItem, error) {
-	return p.GetBudgetHistory()
-}
-
+// GetMonthlyMetricsFiltered returns financial metrics filtered to a specific date range
 func (p *Parser) GetMonthlyMetricsFiltered(startDate, endDate string) ([]MonthlyMetrics, error) {
-	return p.GetMonthlyMetrics()
+	transactions, err := p.GetTransactionsFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> {income, expenses}
+	monthlyData := make(map[string]struct {
+		income   float64
+		expenses float64
+	})
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Positive amounts for income (convert negative to positive), negative for expenses
+			if strings.HasPrefix(posting.Account, "income:") {
+				data := monthlyData[month]
+				data.income += -amount // Income is negative in hledger, so negate it
+				monthlyData[month] = data
+			} else if strings.HasPrefix(posting.Account, "expenses:") {
+				data := monthlyData[month]
+				data.expenses += amount
+				monthlyData[month] = data
+			}
+		}
+	}
+
+	// Get all unique months and sort them
+	var months []string
+	for m := range monthlyData {
+		months = append(months, m)
+	}
+	sort.Strings(months)
+
+	// Build metrics
+	var metrics []MonthlyMetrics
+	for _, month := range months {
+		data := monthlyData[month]
+
+		// Calculate savings rate
+		savingsRate := 0.0
+		if data.income > 0 {
+			savingsRate = ((data.income - data.expenses) / data.income) * 100
+		}
+
+		metrics = append(metrics, MonthlyMetrics{
+			Month:       month,
+			Income:      math.Round(data.income*100) / 100,
+			Expenses:    math.Round(data.expenses*100) / 100,
+			NetWorth:    0.0, // Simplified
+			SavingsRate: math.Round(savingsRate*100) / 100,
+		})
+	}
+
+	return metrics, nil
 }
 
+// GetCategorySpendingFiltered returns category spending filtered to a specific date range
 func (p *Parser) GetCategorySpendingFiltered(startDate, endDate string) ([]CategorySpending, error) {
-	return p.GetCategorySpending()
+	transactions, err := p.GetTransactionsFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> category -> amount
+	monthlyCategories := make(map[string]map[string]float64)
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			// Only include Expenses accounts
+			if !strings.HasPrefix(posting.Account, "expenses:") {
+				continue
+			}
+
+			// Extract category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Store positive value for expenses
+			if amount < 0 {
+				amount = -amount
+			}
+
+			if monthlyCategories[month] == nil {
+				monthlyCategories[month] = make(map[string]float64)
+			}
+			monthlyCategories[month][category] += amount
+		}
+	}
+
+	// Build result
+	var result []CategorySpending
+	for month, categories := range monthlyCategories {
+		for category, amount := range categories {
+			result = append(result, CategorySpending{
+				Month:    month,
+				Category: category,
+				Amount:   math.Round(amount*100) / 100,
+			})
+		}
+	}
+
+	// Sort by month and category
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Month != result[j].Month {
+			return result[i].Month < result[j].Month
+		}
+		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
 }
 
+// GetIncomeBreakdownFiltered returns income categories aggregated within a date range
 func (p *Parser) GetIncomeBreakdownFiltered(startDate, endDate string) ([]CategorySpending, error) {
-	return p.GetIncomeBreakdown()
+	transactions, err := p.GetTransactionsFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of category -> total amount
+	incomeCategories := make(map[string]float64)
+
+	for _, tx := range transactions {
+		for _, posting := range tx.Postings {
+			// Only include Income accounts
+			if !strings.HasPrefix(posting.Account, "income:") {
+				continue
+			}
+
+			// Extract category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Income amounts are typically negative in hledger, make them positive
+			if amount < 0 {
+				amount = -amount
+			}
+
+			incomeCategories[category] += amount
+		}
+	}
+
+	// Build result - return as if all income happened in a single period
+	var result []CategorySpending
+	for category, amount := range incomeCategories {
+		result = append(result, CategorySpending{
+			Month:    "period",
+			Category: category,
+			Amount:   math.Round(amount*100) / 100,
+		})
+	}
+
+	// Sort by category
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
 }
 
+// GetBudgetHistoryFiltered returns budget history filtered to a specific date range
+func (p *Parser) GetBudgetHistoryFiltered(startDate, endDate string) ([]BudgetHistoryItem, error) {
+	transactions, err := p.GetTransactionsFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> category -> amount
+	monthlySpending := make(map[string]map[string]float64)
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			if !strings.HasPrefix(posting.Account, "expenses:") {
+				continue
+			}
+
+			// Extract category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Store positive value for expenses
+			if amount < 0 {
+				amount = -amount
+			}
+
+			if monthlySpending[month] == nil {
+				monthlySpending[month] = make(map[string]float64)
+			}
+			monthlySpending[month][category] += amount
+		}
+	}
+
+	// Collect all months
+	var allMonths []string
+	for month := range monthlySpending {
+		allMonths = append(allMonths, month)
+	}
+	sort.Strings(allMonths)
+
+	// Build category history
+	categoryHistory := make(map[string][]float64)
+	for _, categories := range monthlySpending {
+		for category, amount := range categories {
+			categoryHistory[category] = append(categoryHistory[category], amount)
+		}
+	}
+
+	var history []BudgetHistoryItem
+
+	for category, amounts := range categoryHistory {
+		if len(amounts) < 1 {
+			continue
+		}
+
+		var sum float64
+		for _, v := range amounts {
+			sum += v
+		}
+		avg := sum / float64(len(amounts))
+
+		// Calculate average excluding extremes (values > 2x average)
+		var filteredAmounts []float64
+		for _, v := range amounts {
+			if v <= avg*2 {
+				filteredAmounts = append(filteredAmounts, v)
+			}
+		}
+		avgExcludingExtremes := avg
+		if len(filteredAmounts) > 0 {
+			var filteredSum float64
+			for _, v := range filteredAmounts {
+				filteredSum += v
+			}
+			avgExcludingExtremes = filteredSum / float64(len(filteredAmounts))
+		}
+
+		var monthData []MonthBudget
+		for _, month := range allMonths {
+			var amount float64
+			if categories, ok := monthlySpending[month]; ok {
+				amount = categories[category]
+			}
+
+			percent := 0.0
+			if avg > 0 {
+				percent = (amount / avg) * 100
+			}
+
+			// Extract year from month (format: YYYY-MM)
+			year := ""
+			if len(month) >= 4 {
+				year = month[:4]
+			}
+
+			monthData = append(monthData, MonthBudget{
+				Month:           month,
+				Year:            year,
+				Amount:          math.Round(amount*100) / 100,
+				PercentOfBudget: math.Round(percent*100) / 100,
+				OverBudget:      amount > avg,
+			})
+		}
+
+		history = append(history, BudgetHistoryItem{
+			Category:                 category,
+			Average:                  math.Round(avg*100) / 100,
+			AverageExcludingExtremes: math.Round(avgExcludingExtremes*100) / 100,
+			Months:                   monthData,
+		})
+	}
+
+	sort.Slice(history, func(i, j int) bool {
+		return history[i].Category < history[j].Category
+	})
+
+	return history, nil
+}
+
+// GetIncomeHistoryFiltered returns income history filtered to a specific date range
 func (p *Parser) GetIncomeHistoryFiltered(startDate, endDate string) ([]BudgetHistoryItem, error) {
-	return p.GetIncomeHistory()
+	transactions, err := p.GetTransactionsFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month -> category -> amount
+	monthlyIncome := make(map[string]map[string]float64)
+
+	for _, tx := range transactions {
+		month := getYearMonth(tx.Date)
+
+		for _, posting := range tx.Postings {
+			if !strings.HasPrefix(posting.Account, "income:") {
+				continue
+			}
+
+			// Extract income category
+			parts := strings.Split(posting.Account, ":")
+			var category string
+			if len(parts) >= 2 {
+				category = parts[1]
+			} else {
+				category = posting.Account
+			}
+
+			var amount float64
+			if len(posting.Amount) > 0 {
+				amount = convertAmount(posting.Amount[0].Quantity)
+			}
+
+			// Income is negative in hledger, so negate it for positive display
+			if amount < 0 {
+				amount = -amount
+			}
+
+			if monthlyIncome[month] == nil {
+				monthlyIncome[month] = make(map[string]float64)
+			}
+			monthlyIncome[month][category] += amount
+		}
+	}
+
+	// Get all unique months and sort them
+	var allMonths []string
+	for month := range monthlyIncome {
+		allMonths = append(allMonths, month)
+	}
+	sort.Strings(allMonths)
+
+	// Build category history
+	categoryHistory := make(map[string][]float64)
+	for _, categories := range monthlyIncome {
+		for category, amount := range categories {
+			categoryHistory[category] = append(categoryHistory[category], amount)
+		}
+	}
+
+	var history []BudgetHistoryItem
+
+	for category, amounts := range categoryHistory {
+		if len(amounts) < 1 {
+			continue
+		}
+
+		var sum float64
+		for _, v := range amounts {
+			sum += v
+		}
+		avg := sum / float64(len(amounts))
+
+		// Calculate average excluding extremes
+		var filteredAmounts []float64
+		for _, v := range amounts {
+			if v <= avg*2 {
+				filteredAmounts = append(filteredAmounts, v)
+			}
+		}
+		avgExcludingExtremes := avg
+		if len(filteredAmounts) > 0 {
+			var filteredSum float64
+			for _, v := range filteredAmounts {
+				filteredSum += v
+			}
+			avgExcludingExtremes = filteredSum / float64(len(filteredAmounts))
+		}
+
+		var monthData []MonthBudget
+		for _, month := range allMonths {
+			var amount float64
+			if categories, ok := monthlyIncome[month]; ok {
+				amount = categories[category]
+			}
+
+			percent := 0.0
+			if avg > 0 {
+				percent = (amount / avg) * 100
+			}
+
+			// Extract year from month (format: YYYY-MM)
+			year := ""
+			if len(month) >= 4 {
+				year = month[:4]
+			}
+
+			monthData = append(monthData, MonthBudget{
+				Month:           month,
+				Year:            year,
+				Amount:          math.Round(amount*100) / 100,
+				PercentOfBudget: math.Round(percent*100) / 100,
+				OverBudget:      false, // Income doesn't have "over budget"
+			})
+		}
+
+		history = append(history, BudgetHistoryItem{
+			Category:                 category,
+			Average:                  math.Round(avg*100) / 100,
+			AverageExcludingExtremes: math.Round(avgExcludingExtremes*100) / 100,
+			Months:                   monthData,
+		})
+	}
+
+	sort.Slice(history, func(i, j int) bool {
+		return history[i].Category < history[j].Category
+	})
+
+	return history, nil
 }
 
+// GetNetWorthOverTimeFiltered returns net worth points filtered to a specific date range
 func (p *Parser) GetNetWorthOverTimeFiltered(startDate, endDate string) ([]NetWorthPoint, error) {
-	return p.GetNetWorthOverTime()
+	transactions, err := p.GetTransactionsFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of date -> net worth
+	dateNetWorth := make(map[string]float64)
+
+	for _, tx := range transactions {
+		for _, posting := range tx.Postings {
+			// Include all asset/liability accounts to calculate net worth
+			if strings.HasPrefix(posting.Account, "assets:") || strings.HasPrefix(posting.Account, "liabilities:") {
+				var amount float64
+				if len(posting.Amount) > 0 {
+					amount = convertAmount(posting.Amount[0].Quantity)
+				}
+
+				// Liabilities are negative
+				if strings.HasPrefix(posting.Account, "liabilities:") {
+					amount = -amount
+				}
+
+				dateNetWorth[tx.Date] += amount
+			}
+		}
+	}
+
+	// Build result
+	var result []NetWorthPoint
+	for date, netWorth := range dateNetWorth {
+		result = append(result, NetWorthPoint{
+			Date:     date,
+			NetWorth: math.Round(netWorth*100) / 100,
+		})
+	}
+
+	// Sort by date
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Date < result[j].Date
+	})
+
+	return result, nil
 }
 
+// GetCategoryTrendsFiltered returns category spending trends filtered to a specific date range
 func (p *Parser) GetCategoryTrendsFiltered(startDate, endDate string) ([]CategoryTrendData, error) {
-	return p.GetCategoryTrends()
+	spending, err := p.GetCategorySpendingFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of category -> list of month amounts
+	categoryData := make(map[string][]MonthAmountPair)
+
+	for _, item := range spending {
+		categoryData[item.Category] = append(categoryData[item.Category], MonthAmountPair{
+			Month:  item.Month,
+			Amount: item.Amount,
+		})
+	}
+
+	// Build result
+	var result []CategoryTrendData
+	for category, data := range categoryData {
+		// Sort by month
+		sort.Slice(data, func(i, j int) bool {
+			return data[i].Month < data[j].Month
+		})
+
+		result = append(result, CategoryTrendData{
+			Category: category,
+			Data:     data,
+		})
+	}
+
+	// Sort by category
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Category < result[j].Category
+	})
+
+	return result, nil
 }
 
+// GetYearOverYearComparisonFiltered returns YoY data filtered to a specific date range
 func (p *Parser) GetYearOverYearComparisonFiltered(startDate, endDate string) ([]YearOverYearData, error) {
-	return p.GetYearOverYearComparison()
+	spending, err := p.GetCategorySpendingFiltered(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map of month (MM) -> year (YYYY) -> amount
+	monthYearData := make(map[string]map[string]float64)
+
+	for _, item := range spending {
+		// Extract month and year from item.Month (format: YYYY-MM)
+		if len(item.Month) < 7 {
+			continue
+		}
+
+		month := item.Month[5:7] // Get MM part
+		year := item.Month[:4]    // Get YYYY part
+
+		if monthYearData[month] == nil {
+			monthYearData[month] = make(map[string]float64)
+		}
+
+		monthYearData[month][year] += item.Amount
+	}
+
+	// Build result
+	var result []YearOverYearData
+	for month, years := range monthYearData {
+		result = append(result, YearOverYearData{
+			Month: month,
+			Years: years,
+		})
+	}
+
+	// Sort by month
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Month < result[j].Month
+	})
+
+	return result, nil
 }
 
 // Detail page filtered methods
