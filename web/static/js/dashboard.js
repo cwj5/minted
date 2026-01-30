@@ -133,6 +133,52 @@ function updateActiveFilterButton() {
     }
 }
 
+// Show empty state message for a chart container
+function showEmptyState(containerId, message = 'No Activity') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const canvas = container.querySelector('canvas');
+    if (canvas) {
+        canvas.style.display = 'none';
+    }
+
+    let emptyMsg = container.querySelector('.empty-state-message');
+    if (!emptyMsg) {
+        emptyMsg = document.createElement('div');
+        emptyMsg.className = 'empty-state-message';
+        emptyMsg.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: ${container.clientHeight || 300}px;
+            color: #7f8c8d;
+            font-size: 16px;
+            font-weight: 500;
+            text-align: center;
+        `;
+        container.appendChild(emptyMsg);
+    }
+    emptyMsg.textContent = message;
+    emptyMsg.style.display = 'flex';
+}
+
+// Hide empty state message for a chart container
+function hideEmptyState(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const canvas = container.querySelector('canvas');
+    if (canvas) {
+        canvas.style.display = '';
+    }
+
+    const emptyMsg = container.querySelector('.empty-state-message');
+    if (emptyMsg) {
+        emptyMsg.style.display = 'none';
+    }
+}
+
 // Store settings globally for color mapping
 let appSettings = null;
 let budgetCharts = [];
@@ -1006,9 +1052,11 @@ async function loadIncomeExpensesChart() {
         const metrics = await response.json();
 
         if (!metrics || metrics.length === 0) {
+            showEmptyState('incomeExpensesChart', 'No Activity');
             return;
         }
 
+        hideEmptyState('incomeExpensesChart');
         const ctx = document.getElementById('incomeExpensesChart');
         if (!ctx) return;
 
@@ -1115,9 +1163,11 @@ async function loadCategorySpendingChart() {
         const spending = await response.json();
 
         if (!spending || spending.length === 0) {
+            showEmptyState('categorySpendingChart', 'No Activity');
             return;
         }
 
+        hideEmptyState('categorySpendingChart');
         const ctx = document.getElementById('categorySpendingChart');
         if (!ctx) return;
 
@@ -1341,9 +1391,11 @@ async function loadIncomeBreakdownChart() {
         const income = await response.json();
 
         if (!income || income.length === 0) {
+            showEmptyState('incomeBreakdownChart', 'No Activity');
             return;
         }
 
+        hideEmptyState('incomeBreakdownChart');
         const ctx = document.getElementById('incomeBreakdownChart');
         if (!ctx) return;
 
@@ -1406,9 +1458,11 @@ async function loadNetWorthChart() {
         const data = await response.json();
 
         if (!data || data.length === 0) {
+            showEmptyState('netWorthChart', 'No Activity');
             return;
         }
 
+        hideEmptyState('netWorthChart');
         const ctx = document.getElementById('netWorthChart');
         if (!ctx) return;
 
@@ -1475,9 +1529,11 @@ async function loadCategoryTrendsChart() {
         const data = await response.json();
 
         if (!data || data.length === 0) {
+            showEmptyState('categoryTrendsChart', 'No Activity');
             return;
         }
 
+        hideEmptyState('categoryTrendsChart');
         const ctx = document.getElementById('categoryTrendsChart');
         if (!ctx) return;
 
@@ -1560,9 +1616,11 @@ async function loadYearOverYearChart() {
         const data = await response.json();
 
         if (!data || data.length === 0) {
+            showEmptyState('yoyComparisonChart', 'No Activity');
             return;
         }
 
+        hideEmptyState('yoyComparisonChart');
         const ctx = document.getElementById('yoyComparisonChart');
         if (!ctx) return;
 
