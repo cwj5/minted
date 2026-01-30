@@ -132,6 +132,31 @@
         </header>
 
         <main class="dashboard">
+            <!-- Date Filter Section -->
+            <section class="filter-section" style="margin-bottom: 24px;">
+                <div id="filter-banner" class="filter-banner" style="display: none;">
+                    <span id="filter-banner-text"></span>
+                    <button id="clear-filter-btn" class="clear-filter-btn">Clear Filter</button>
+                </div>
+                <div class="filter-controls">
+                    <div class="filter-presets">
+                        <button class="filter-btn" data-preset="lastMonth">Last Month</button>
+                        <button class="filter-btn" data-preset="last3Months">Last 3 Months</button>
+                        <button class="filter-btn" data-preset="last6Months">Last 6 Months</button>
+                        <button class="filter-btn" data-preset="lastYear">Last Year</button>
+                        <button class="filter-btn" data-preset="ytd">Year-to-Date</button>
+                        <button class="filter-btn active" data-preset="all">All Time</button>
+                    </div>
+                    <div class="filter-custom">
+                        <label for="filter-start">From:</label>
+                        <input type="date" id="filter-start" class="filter-date-input">
+                        <label for="filter-end">To:</label>
+                        <input type="date" id="filter-end" class="filter-date-input">
+                        <button id="apply-custom-filter" class="filter-btn filter-btn-primary">Apply</button>
+                    </div>
+                </div>
+            </section>
+
             <!-- Breadcrumb -->
             <div class="detail-header">
                 <div>

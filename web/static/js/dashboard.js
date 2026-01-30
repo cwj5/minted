@@ -6,6 +6,133 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
+// Date filter utilities
+function getURLParams() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        startDate: params.get('startDate') || '',
+        endDate: params.get('endDate') || '',
+        preset: params.get('preset') || 'all'
+    };
+}
+
+function setURLParams(startDate, endDate, preset) {
+    const params = new URLSearchParams(window.location.search);
+
+    if (preset && preset !== 'all') {
+        params.set('preset', preset);
+        params.delete('startDate');
+        params.delete('endDate');
+    } else if (startDate && endDate) {
+        params.set('startDate', startDate);
+        params.set('endDate', endDate);
+        params.delete('preset');
+    } else {
+        params.delete('startDate');
+        params.delete('endDate');
+        params.delete('preset');
+    }
+
+    const newURL = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+    window.history.pushState({}, '', newURL);
+}
+
+function calculatePresetDates(preset) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+
+    switch (preset) {
+        case 'lastMonth':
+            // Previous full month
+            const lastMonthDate = new Date(year, month - 1, 1);
+            const startDate = formatDateForInput(lastMonthDate);
+            const endDate = formatDateForInput(new Date(year, month, 0)); // Last day of last month
+            return { startDate, endDate };
+
+        case 'last3Months':
+            return {
+                startDate: formatDateForInput(new Date(year, month - 3, 1)),
+                endDate: formatDateForInput(today)
+            };
+
+        case 'last6Months':
+            return {
+                startDate: formatDateForInput(new Date(year, month - 6, 1)),
+                endDate: formatDateForInput(today)
+            };
+
+        case 'lastYear':
+            return {
+                startDate: formatDateForInput(new Date(year - 1, month, 1)),
+                endDate: formatDateForInput(today)
+            };
+
+        case 'ytd':
+            // Year-to-date (calendar year)
+            return {
+                startDate: `${year}-01-01`,
+                endDate: formatDateForInput(today)
+            };
+
+        case 'all':
+        default:
+            return { startDate: '', endDate: '' };
+    }
+}
+
+function formatDateForInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getFilterQueryString() {
+    const params = getURLParams();
+
+    if (params.preset && params.preset !== 'all') {
+        const dates = calculatePresetDates(params.preset);
+        if (dates.startDate && dates.endDate) {
+            return `startDate=${dates.startDate}&endDate=${dates.endDate}`;
+        }
+    } else if (params.startDate && params.endDate) {
+        return `startDate=${params.startDate}&endDate=${params.endDate}`;
+    }
+
+    return '';
+}
+
+function updateFilterBanner() {
+    const params = getURLParams();
+    const banner = document.getElementById('filter-banner');
+    const bannerText = document.getElementById('filter-banner-text');
+
+    if (params.preset && params.preset !== 'all') {
+        const dates = calculatePresetDates(params.preset);
+        banner.style.display = 'flex';
+        bannerText.textContent = `Filtered: ${dates.startDate} to ${dates.endDate}`;
+    } else if (params.startDate && params.endDate) {
+        banner.style.display = 'flex';
+        bannerText.textContent = `Filtered: ${params.startDate} to ${params.endDate}`;
+    } else {
+        banner.style.display = 'none';
+    }
+}
+
+function updateActiveFilterButton() {
+    const params = getURLParams();
+    document.querySelectorAll('.filter-btn[data-preset]').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    const activePreset = params.preset || 'all';
+    const activeBtn = document.querySelector(`.filter-btn[data-preset="${activePreset}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    }
+}
+
 // Store settings globally for color mapping
 let appSettings = null;
 let budgetCharts = [];
@@ -166,7 +293,9 @@ async function refreshDashboardData() {
 // Load summary data
 async function loadSummary() {
     try {
-        const response = await fetch('/api/summary');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/summary?${filterParams}` : '/api/summary';
+        const response = await fetch(url);
         const data = await response.json();
 
         document.getElementById('netWorth').textContent = formatCurrency(data.netWorth || 0);
@@ -180,7 +309,9 @@ async function loadSummary() {
 // Load accounts
 async function loadAccounts() {
     try {
-        const response = await fetch('/api/accounts');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/accounts?${filterParams}` : '/api/accounts';
+        const response = await fetch(url);
         const accounts = await response.json();
 
         const container = document.getElementById('accounts');
@@ -245,7 +376,9 @@ function destroyBudgetCharts() {
 // Load budget history and render per-category line charts with multi-year support
 async function loadBudgetHistory() {
     try {
-        const response = await fetch('/api/budget/history');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/budget/history?${filterParams}` : '/api/budget/history';
+        const response = await fetch(url);
         const items = await response.json();
 
         const container = document.getElementById('budget-charts');
@@ -451,7 +584,9 @@ async function loadBudgetHistory() {
 // Load income categories and render as a single clickable 'All Income' card
 async function loadIncomeCategories() {
     try {
-        const response = await fetch('/api/income-breakdown');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/income-breakdown?${filterParams}` : '/api/income-breakdown';
+        const response = await fetch(url);
         const income = await response.json();
 
         const container = document.getElementById('income-categories');
@@ -517,7 +652,9 @@ const transactionsPerPage = 20;
 
 async function loadTransactions() {
     try {
-        const response = await fetch('/api/transactions');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/transactions?${filterParams}` : '/api/transactions';
+        const response = await fetch(url);
         allTransactions = await response.json();
         currentPage = 1;
         renderTransactionsPage();
@@ -695,7 +832,9 @@ function escapeHtml(text) {
 // Load and render savings rate chart
 async function loadSavingsRateChart() {
     try {
-        const response = await fetch('/api/monthly-metrics');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/monthly-metrics?${filterParams}` : '/api/monthly-metrics';
+        const response = await fetch(url);
         const metrics = await response.json();
 
         if (!metrics || metrics.length === 0) {
@@ -861,7 +1000,9 @@ async function loadSavingsRateChart() {
 // Load and render income vs expenses chart
 async function loadIncomeExpensesChart() {
     try {
-        const response = await fetch('/api/monthly-metrics');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/monthly-metrics?${filterParams}` : '/api/monthly-metrics';
+        const response = await fetch(url);
         const metrics = await response.json();
 
         if (!metrics || metrics.length === 0) {
@@ -968,7 +1109,9 @@ async function loadIncomeExpensesChart() {
 // Load and render spending by category chart
 async function loadCategorySpendingChart() {
     try {
-        const response = await fetch('/api/category-spending');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/category-spending?${filterParams}` : '/api/category-spending';
+        const response = await fetch(url);
         const spending = await response.json();
 
         if (!spending || spending.length === 0) {
@@ -1073,6 +1216,51 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshBtn.addEventListener('click', refreshDashboardData);
     }
 
+    // Add filter event listeners
+    document.querySelectorAll('.filter-btn[data-preset]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const preset = btn.dataset.preset;
+            const dates = calculatePresetDates(preset);
+            setURLParams(dates.startDate, dates.endDate, preset);
+            updateFilterBanner();
+            updateActiveFilterButton();
+            currentPage = 1; // Reset pagination
+            refreshAllData();
+        });
+    });
+
+    const applyCustomBtn = document.getElementById('apply-custom-filter');
+    if (applyCustomBtn) {
+        applyCustomBtn.addEventListener('click', () => {
+            const startDate = document.getElementById('filter-start').value;
+            const endDate = document.getElementById('filter-end').value;
+            if (startDate && endDate) {
+                setURLParams(startDate, endDate, null);
+                updateFilterBanner();
+                updateActiveFilterButton();
+                currentPage = 1; // Reset pagination
+                refreshAllData();
+            }
+        });
+    }
+
+    const clearFilterBtn = document.getElementById('clear-filter-btn');
+    if (clearFilterBtn) {
+        clearFilterBtn.addEventListener('click', () => {
+            setURLParams('', '', 'all');
+            document.getElementById('filter-start').value = '';
+            document.getElementById('filter-end').value = '';
+            updateFilterBanner();
+            updateActiveFilterButton();
+            currentPage = 1; // Reset pagination
+            refreshAllData();
+        });
+    }
+
+    // Initialize filter UI from URL
+    updateFilterBanner();
+    updateActiveFilterButton();
+
     // Add pagination event listeners
     const firstBtn = document.getElementById('first-page');
     const prevBtn = document.getElementById('prev-page');
@@ -1116,6 +1304,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+function refreshAllData() {
+    loadSummary();
+    loadBudgetHistory();
+    loadIncomeCategories();
+    loadSavingsRateChart();
+    loadAccounts();
+    loadTransactions();
+    loadIncomeExpensesChart();
+    loadCategorySpendingChart();
+    loadIncomeBreakdownChart();
+    loadNetWorthChart();
+    loadCategoryTrendsChart();
+    loadYearOverYearChart();
+}
+
+
 // Convert YYYY-MM to Date for chart display
 function parseMonthToDate(monthStr) {
     const [year, month] = monthStr.split('-');
@@ -1131,7 +1335,9 @@ async function loadIncomeBreakdownChart() {
             incomeBreakdownChart = null;
         }
 
-        const response = await fetch('/api/income-breakdown');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/income-breakdown?${filterParams}` : '/api/income-breakdown';
+        const response = await fetch(url);
         const income = await response.json();
 
         if (!income || income.length === 0) {
@@ -1194,7 +1400,9 @@ async function loadIncomeBreakdownChart() {
 // Load and render net worth over time chart
 async function loadNetWorthChart() {
     try {
-        const response = await fetch('/api/net-worth-over-time');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/net-worth-over-time?${filterParams}` : '/api/net-worth-over-time';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (!data || data.length === 0) {
@@ -1261,7 +1469,9 @@ async function loadNetWorthChart() {
 // Load and render category trends chart
 async function loadCategoryTrendsChart() {
     try {
-        const response = await fetch('/api/category-trends');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/category-trends?${filterParams}` : '/api/category-trends';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (!data || data.length === 0) {
@@ -1344,7 +1554,9 @@ async function loadCategoryTrendsChart() {
 // Load and render year-over-year comparison chart
 async function loadYearOverYearChart() {
     try {
-        const response = await fetch('/api/year-over-year-comparison');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/year-over-year-comparison?${filterParams}` : '/api/year-over-year-comparison';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (!data || data.length === 0) {
@@ -1633,7 +1845,10 @@ function convertPostingAmount(amount) {
 // Load category detail
 async function loadCategoryDetail(category) {
     try {
-        const response = await fetch(`/api/detail/category?category=${encodeURIComponent(category)}`);
+        const filterParams = getFilterQueryString();
+        const separator = filterParams ? '&' : '';
+        const url = `/api/detail/category?category=${encodeURIComponent(category)}${separator}${filterParams}`;
+        const response = await fetch(url);
         const data = await response.json();
 
         // Update page title and breadcrumb
@@ -1663,7 +1878,10 @@ async function loadCategoryDetail(category) {
 // Load tier detail
 async function loadTierDetail(tier) {
     try {
-        const response = await fetch(`/api/detail/tier?tier=${encodeURIComponent(tier)}`);
+        const filterParams = getFilterQueryString();
+        const separator = filterParams ? '&' : '';
+        const url = `/api/detail/tier?tier=${encodeURIComponent(tier)}${separator}${filterParams}`;
+        const response = await fetch(url);
         const data = await response.json();
 
         // Update page title and breadcrumb
@@ -1693,7 +1911,10 @@ async function loadTierDetail(tier) {
 // Load account detail
 async function loadAccountDetail(account) {
     try {
-        const response = await fetch(`/api/detail/account?account=${encodeURIComponent(account)}`);
+        const filterParams = getFilterQueryString();
+        const separator = filterParams ? '&' : '';
+        const url = `/api/detail/account?account=${encodeURIComponent(account)}${separator}${filterParams}`;
+        const response = await fetch(url);
         const data = await response.json();
 
         // Clean up account name for display
@@ -1733,7 +1954,10 @@ async function loadAccountDetail(account) {
 // Load income detail
 async function loadIncomeDetail(incomeName) {
     try {
-        const response = await fetch(`/api/detail/income?income=${encodeURIComponent(incomeName)}`);
+        const filterParams = getFilterQueryString();
+        const separator = filterParams ? '&' : '';
+        const url = `/api/detail/income?income=${encodeURIComponent(incomeName)}${separator}${filterParams}`;
+        const response = await fetch(url);
         const data = await response.json();
 
         // Update page title and breadcrumb
@@ -1768,7 +1992,9 @@ async function loadIncomeDetail(incomeName) {
 // Load all income detail (aggregate view like tiers)
 async function loadAllIncomeDetail() {
     try {
-        const response = await fetch('/api/income-breakdown');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/income-breakdown?${filterParams}` : '/api/income-breakdown';
+        const response = await fetch(url);
         const breakdown = await response.json();
 
         // Update page title and breadcrumb
@@ -1778,7 +2004,9 @@ async function loadAllIncomeDetail() {
         document.getElementById('transactions-title').textContent = 'All Income Transactions';
 
         // Fetch all income transactions
-        const txResponse = await fetch('/api/transactions');
+        const txFilterParams = getFilterQueryString();
+        const txUrl = txFilterParams ? `/api/transactions?${txFilterParams}` : '/api/transactions';
+        const txResponse = await fetch(txUrl);
         const allTransactions = await txResponse.json();
 
         // Filter for income transactions
@@ -1817,7 +2045,9 @@ async function loadAllIncomeDetail() {
 // Load and render income history charts (similar to budget history)
 async function loadIncomeHistoryCharts() {
     try {
-        const response = await fetch('/api/income-history');
+        const filterParams = getFilterQueryString();
+        const url = filterParams ? `/api/income-history?${filterParams}` : '/api/income-history';
+        const response = await fetch(url);
         const items = await response.json();
 
         const container = document.getElementById('income-history-charts');

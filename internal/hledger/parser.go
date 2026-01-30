@@ -165,6 +165,15 @@ func (p *Parser) UpdateSettings(settings *config.Settings) {
 	p.settings = settings
 }
 
+// buildDateArgs constructs hledger command line args for date filtering
+func (p *Parser) buildDateArgs(startDate, endDate string) []string {
+	if startDate == "" || endDate == "" {
+		return []string{}
+	}
+	// Use -e (end date is exclusive in hledger)
+	return []string{"-b", startDate, "-e", endDate}
+}
+
 // GetAccounts retrieves Assets and Liabilities accounts from hledger with their balances
 func (p *Parser) GetAccounts() ([]Account, error) {
 	cmd := exec.Command("hledger", "-f", p.journalFile, "balance", "--empty", "-O", "json")

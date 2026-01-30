@@ -12,6 +12,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// DateFilter holds start and end dates for filtering
+type DateFilter struct {
+	StartDate string
+	EndDate   string
+}
+
 // Service handles dashboard operations
 type Service struct {
 	parser          *hledger.Parser
@@ -163,6 +169,27 @@ func (s *Service) getCache() (*CachedData, bool) {
 	return s.cache, true
 }
 
+// getDateFilter extracts and validates date filter parameters from request
+func (s *Service) getDateFilter(c *gin.Context) *DateFilter {
+	startDate := c.Query("startDate")
+	endDate := c.Query("endDate")
+
+	// Only return a filter if both dates are provided
+	if startDate != "" && endDate != "" {
+		return &DateFilter{
+			StartDate: startDate,
+			EndDate:   endDate,
+		}
+	}
+
+	return nil
+}
+
+// hasDateFilter checks if date filtering is active
+func (s *Service) hasDateFilter(c *gin.Context) bool {
+	return c.Query("startDate") != "" && c.Query("endDate") != ""
+}
+
 // HandleIndex serves the main dashboard page
 func (s *Service) HandleIndex(c *gin.Context) {
 	// Check if this is a detail page request
@@ -187,7 +214,22 @@ func (s *Service) HandleSettings(c *gin.Context) {
 }
 
 // HandleAccounts returns account data as JSON
+// HandleAccounts returns account data as JSON
 func (s *Service) HandleAccounts(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		accounts, err := s.parser.GetAccountsFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered accounts: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get accounts"})
+			return
+		}
+		c.JSON(http.StatusOK, accounts)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -198,6 +240,20 @@ func (s *Service) HandleAccounts(c *gin.Context) {
 
 // HandleTransactions returns transaction data as JSON
 func (s *Service) HandleTransactions(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		transactions, err := s.parser.GetTransactionsFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered transactions: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get transactions"})
+			return
+		}
+		c.JSON(http.StatusOK, transactions)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -208,6 +264,35 @@ func (s *Service) HandleTransactions(c *gin.Context) {
 
 // HandleSummary returns financial summary
 func (s *Service) HandleSummary(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		accounts, err := s.parser.GetAccountsFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered accounts: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get summary"})
+			return
+		}
+
+		summary := SummaryData{}
+		for _, account := range accounts {
+			if len(account.Name) >= 7 && account.Name[:7] == "assets:" {
+				summary.TotalAssets += account.Balance
+			} else if len(account.Name) >= 12 && account.Name[:12] == "liabilities:" {
+				summary.TotalLiabilities += -account.Balance
+			}
+		}
+		summary.NetWorth = summary.TotalAssets - summary.TotalLiabilities
+
+		c.JSON(http.StatusOK, gin.H{
+			"totalAssets":      summary.TotalAssets,
+			"totalLiabilities": summary.TotalLiabilities,
+			"netWorth":         summary.NetWorth,
+		})
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -233,6 +318,20 @@ func (s *Service) HandleBudgetComparison(c *gin.Context) {
 
 // HandleBudgetHistory returns historical budget vs actuals
 func (s *Service) HandleBudgetHistory(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		budgetHistory, err := s.parser.GetBudgetHistoryFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered budget history: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get budget history"})
+			return
+		}
+		c.JSON(http.StatusOK, budgetHistory)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -243,6 +342,20 @@ func (s *Service) HandleBudgetHistory(c *gin.Context) {
 
 // HandleMonthlyMetrics returns monthly income, expenses, and savings
 func (s *Service) HandleMonthlyMetrics(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		monthlyMetrics, err := s.parser.GetMonthlyMetricsFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered monthly metrics: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get monthly metrics"})
+			return
+		}
+		c.JSON(http.StatusOK, monthlyMetrics)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -253,6 +366,20 @@ func (s *Service) HandleMonthlyMetrics(c *gin.Context) {
 
 // HandleCategorySpending returns spending by category over time
 func (s *Service) HandleCategorySpending(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		categorySpending, err := s.parser.GetCategorySpendingFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered category spending: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get category spending"})
+			return
+		}
+		c.JSON(http.StatusOK, categorySpending)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -263,6 +390,18 @@ func (s *Service) HandleCategorySpending(c *gin.Context) {
 
 // HandleIncomeBreakdown returns income categories aggregated across all months
 func (s *Service) HandleIncomeBreakdown(c *gin.Context) {
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		incomeBreakdown, err := s.parser.GetIncomeBreakdownFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered income breakdown: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get income breakdown"})
+			return
+		}
+		c.JSON(http.StatusOK, incomeBreakdown)
+		return
+	}
+
 	incomeBreakdown, err := s.parser.GetIncomeBreakdown()
 	if err != nil {
 		log.Printf("Error getting income breakdown: %v", err)
@@ -274,6 +413,18 @@ func (s *Service) HandleIncomeBreakdown(c *gin.Context) {
 
 // HandleIncomeHistory returns income history by category and month
 func (s *Service) HandleIncomeHistory(c *gin.Context) {
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		incomeHistory, err := s.parser.GetIncomeHistoryFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered income history: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get income history"})
+			return
+		}
+		c.JSON(http.StatusOK, incomeHistory)
+		return
+	}
+
 	incomeHistory, err := s.parser.GetIncomeHistory()
 	if err != nil {
 		log.Printf("Error getting income history: %v", err)
@@ -285,6 +436,20 @@ func (s *Service) HandleIncomeHistory(c *gin.Context) {
 
 // HandleNetWorthOverTime returns net worth for each month
 func (s *Service) HandleNetWorthOverTime(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		netWorth, err := s.parser.GetNetWorthOverTimeFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered net worth: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get net worth"})
+			return
+		}
+		c.JSON(http.StatusOK, netWorth)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -295,6 +460,20 @@ func (s *Service) HandleNetWorthOverTime(c *gin.Context) {
 
 // HandleCategoryTrends returns spending trends for each category
 func (s *Service) HandleCategoryTrends(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		categoryTrends, err := s.parser.GetCategoryTrendsFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered category trends: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get category trends"})
+			return
+		}
+		c.JSON(http.StatusOK, categoryTrends)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -305,6 +484,20 @@ func (s *Service) HandleCategoryTrends(c *gin.Context) {
 
 // HandleYearOverYearComparison returns spending comparison across years
 func (s *Service) HandleYearOverYearComparison(c *gin.Context) {
+	// Check if date filtering is requested
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		yoyData, err := s.parser.GetYearOverYearComparisonFiltered(filter.StartDate, filter.EndDate)
+		if err != nil {
+			log.Printf("Error getting filtered year-over-year: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get year-over-year comparison"})
+			return
+		}
+		c.JSON(http.StatusOK, yoyData)
+		return
+	}
+
+	// Use cache for unfiltered requests
 	cache, ok := s.getCache()
 	if !ok {
 		c.JSON(http.StatusAccepted, gin.H{"message": "cache empty; refresh required", "needsRefresh": true})
@@ -394,7 +587,16 @@ func (s *Service) HandleCategoryDetail(c *gin.Context) {
 		return
 	}
 
-	detail, err := s.parser.GetCategoryDetail(category)
+	var detail interface{}
+	var err error
+
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		detail, err = s.parser.GetCategoryDetailFiltered(category, filter.StartDate, filter.EndDate)
+	} else {
+		detail, err = s.parser.GetCategoryDetail(category)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -411,7 +613,16 @@ func (s *Service) HandleTierDetail(c *gin.Context) {
 		return
 	}
 
-	detail, err := s.parser.GetTierDetail(tier)
+	var detail interface{}
+	var err error
+
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		detail, err = s.parser.GetTierDetailFiltered(tier, filter.StartDate, filter.EndDate)
+	} else {
+		detail, err = s.parser.GetTierDetail(tier)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -433,7 +644,16 @@ func (s *Service) HandleAccountDetail(c *gin.Context) {
 		return
 	}
 
-	detail, err := s.parser.GetAccountDetail(account)
+	var detail interface{}
+	var err error
+
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		detail, err = s.parser.GetAccountDetailFiltered(account, filter.StartDate, filter.EndDate)
+	} else {
+		detail, err = s.parser.GetAccountDetail(account)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -450,7 +670,16 @@ func (s *Service) HandleIncomeDetail(c *gin.Context) {
 		return
 	}
 
-	detail, err := s.parser.GetIncomeDetail(income)
+	var detail interface{}
+	var err error
+
+	if s.hasDateFilter(c) {
+		filter := s.getDateFilter(c)
+		detail, err = s.parser.GetIncomeDetailFiltered(income, filter.StartDate, filter.EndDate)
+	} else {
+		detail, err = s.parser.GetIncomeDetail(income)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
