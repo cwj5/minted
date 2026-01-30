@@ -368,7 +368,11 @@ async function loadAccounts() {
 
         // Filter and format accounts
         const filteredAccounts = accounts
-            .filter(account => !account.aname.includes(':transfer'))
+            .filter(account => {
+                const name = account.aname.toLowerCase();
+                return (name.startsWith('assets:') || name.startsWith('liabilities:'))
+                    && !account.aname.includes(':transfer');
+            })
             .map(account => {
                 let displayName = account.aname;
                 let isLiability = false;
@@ -385,9 +389,9 @@ async function loadAccounts() {
                 // Strip trailing ":current" suffix
                 displayName = displayName.replace(/:current$/i, '');
 
-                // For liabilities, flip the sign to show positive amounts
+                // For liabilities, flip negative values to show positive amounts
                 let displayBalance = account.aebalance || 0;
-                if (isLiability && displayBalance !== 0) {
+                if (isLiability && displayBalance < 0) {
                     displayBalance = -displayBalance;
                 }
 

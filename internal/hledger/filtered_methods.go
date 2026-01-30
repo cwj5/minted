@@ -13,7 +13,7 @@ import (
 
 // Filtered method implementations - these bypass the cache and apply date ranges
 
-// GetAccountsFiltered retrieves accounts with balances as of the end date
+// GetAccountsFiltered retrieves accounts with balances for the period (changes only)
 func (p *Parser) GetAccountsFiltered(startDate, endDate string) ([]Account, error) {
 	args := []string{"-f", p.journalFile, "balance", "--empty", "-O", "json"}
 	args = append(args, p.buildDateArgs(startDate, endDate)...)
@@ -22,6 +22,80 @@ func (p *Parser) GetAccountsFiltered(startDate, endDate string) ([]Account, erro
 	output, err := cmd.Output()
 	if err != nil {
 		log.Printf("Error running hledger balance (filtered): file=%s, error=%v", p.journalFile, err)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Printf("stderr: %s", string(exitErr.Stderr))
+		}
+		return nil, err
+	}
+
+	var balanceData [][]interface{}
+	err = json.Unmarshal(output, &balanceData)
+	if err != nil {
+		log.Printf("Error parsing JSON: %v", err)
+		return nil, err
+	}
+
+	var accounts []Account
+
+	if len(balanceData) > 0 {
+		accountsList := balanceData[0]
+
+		for _, item := range accountsList {
+			if itemArr, ok := item.([]interface{}); ok && len(itemArr) >= 4 {
+				name, ok := itemArr[0].(string)
+				if !ok || name == "" {
+					continue
+				}
+
+				commodityData, ok := itemArr[3].([]interface{})
+				if !ok || len(commodityData) == 0 {
+					accounts = append(accounts, Account{
+						Name:     name,
+						Balance:  0,
+						Currency: "",
+					})
+					continue
+				}
+
+				firstAmount, ok := commodityData[0].(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				quantityData, ok := firstAmount["aquantity"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				mantissa, _ := quantityData["decimalMantissa"].(float64)
+				places, _ := quantityData["decimalPlaces"].(float64)
+				balance := mantissa / math.Pow(10, places)
+
+				currency, _ := firstAmount["acommodity"].(string)
+
+				accounts = append(accounts, Account{
+					Name:     name,
+					Balance:  balance,
+					Currency: currency,
+				})
+			}
+		}
+	}
+
+	return accounts, nil
+}
+
+// GetAccountsUpToDate retrieves accounts with cumulative balances from start of journal up to end date
+func (p *Parser) GetAccountsUpToDate(endDate string) ([]Account, error) {
+	args := []string{"-f", p.journalFile, "balance", "--empty", "-O", "json"}
+	if endDate != "" {
+		args = append(args, "-e", endDate)
+	}
+
+	cmd := exec.Command("hledger", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("Error running hledger balance (up to date): file=%s, error=%v", p.journalFile, err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			log.Printf("stderr: %s", string(exitErr.Stderr))
 		}
@@ -663,7 +737,7 @@ func (p *Parser) GetYearOverYearComparisonFiltered(startDate, endDate string) ([
 		}
 
 		month := item.Month[5:7] // Get MM part
-		year := item.Month[:4]    // Get YYYY part
+		year := item.Month[:4]   // Get YYYY part
 
 		if monthYearData[month] == nil {
 			monthYearData[month] = make(map[string]float64)

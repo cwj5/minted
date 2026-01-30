@@ -267,9 +267,10 @@ func (s *Service) HandleSummary(c *gin.Context) {
 	// Check if date filtering is requested
 	if s.hasDateFilter(c) {
 		filter := s.getDateFilter(c)
-		accounts, err := s.parser.GetAccountsFiltered(filter.StartDate, filter.EndDate)
+		// Get cumulative balances up to end date for accurate net worth
+		accounts, err := s.parser.GetAccountsUpToDate(filter.EndDate)
 		if err != nil {
-			log.Printf("Error getting filtered accounts: %v", err)
+			log.Printf("Error getting accounts up to date: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get summary"})
 			return
 		}
